@@ -1,0 +1,71 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.userprefs
+*.usertasks
+project.lock.json
+project.fragment.lock.json
+artifacts/
+**/Properties/launchSettings.json
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+!**/packages/build/
+*.lock.json
+!packages.lock.json
+
+## Environment & Secrets — NEVER commit these
+.env
+.env.local
+.env.staging
+.env.production
+appsettings.Production.json
+**/secrets.json
+
+## ML Models — large files, store separately
+models/onnx/*.onnx
+models/mlnet/*.zip
+
+## Docker
+infra/docker/nginx/certs/
+
+## OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## IDE
+.idea/
+*.iml
+.vscode/settings.json
+*.swp
+*~
+
+## Test results
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+## Logs
+*.log
+logs/

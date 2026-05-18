@@ -1,0 +1,60 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+
+  <!-- Centralised NuGet package versions — update here, applies to all projects -->
+  <ItemGroup>
+    <!-- ASP.NET Core -->
+    <PackageReference Update="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+    <PackageReference Update="Microsoft.AspNetCore.SignalR" Version="1.1.0" />
+    <PackageReference Update="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.0" />
+
+    <!-- Entity Framework Core -->
+    <PackageReference Update="Microsoft.EntityFrameworkCore" Version="8.0.0" />
+    <PackageReference Update="Microsoft.EntityFrameworkCore.Design" Version="8.0.0" />
+    <PackageReference Update="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.0" />
+
+    <!-- ML / AI -->
+    <PackageReference Update="Microsoft.ML" Version="3.0.1" />
+    <PackageReference Update="Microsoft.ML.FastTree" Version="3.0.1" />
+    <PackageReference Update="Microsoft.ML.LightGbm" Version="3.0.1" />
+    <PackageReference Update="Microsoft.ML.OnnxRuntime" Version="1.17.1" />
+    <PackageReference Update="Microsoft.ML.OnnxTransformer" Version="3.0.1" />
+
+    <!-- Infrastructure -->
+    <PackageReference Update="StackExchange.Redis" Version="2.7.17" />
+    <PackageReference Update="Minio" Version="6.0.2" />
+    <PackageReference Update="Hangfire.AspNetCore" Version="1.8.9" />
+    <PackageReference Update="Hangfire.PostgreSql" Version="1.20.9" />
+
+    <!-- Validation & Patterns -->
+    <PackageReference Update="FluentValidation.AspNetCore" Version="11.3.0" />
+    <PackageReference Update="MediatR" Version="12.2.0" />
+    <PackageReference Update="MediatR.Extensions.Microsoft.DependencyInjection" Version="11.1.0" />
+
+    <!-- PDF Generation -->
+    <PackageReference Update="QuestPDF" Version="2024.3.2" />
+
+    <!-- Logging -->
+    <PackageReference Update="Serilog.AspNetCore" Version="8.0.1" />
+    <PackageReference Update="Serilog.Sinks.Grafana.Loki" Version="8.3.0" />
+
+    <!-- Utilities -->
+    <PackageReference Update="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Update="System.IdentityModel.Tokens.Jwt" Version="7.3.1" />
+    <PackageReference Update="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <PackageReference Update="DocumentFormat.OpenXml" Version="3.0.2" />
+
+    <!-- Testing -->
+    <PackageReference Update="xunit" Version="2.7.0" />
+    <PackageReference Update="xunit.runner.visualstudio" Version="2.5.7" />
+    <PackageReference Update="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.0" />
+    <PackageReference Update="Moq" Version="4.20.70" />
+    <PackageReference Update="FluentAssertions" Version="6.12.0" />
+  </ItemGroup>
+</Project>
