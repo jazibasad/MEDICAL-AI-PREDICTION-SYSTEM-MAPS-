@@ -1,0 +1,55 @@
+version: "3.9"
+
+# ============================================================
+# MAPS — Docker Compose Override (Development)
+# Applied automatically when running: docker compose up
+# Enables hot-reload, exposes ports for local debugging
+# ============================================================
+
+services:
+
+  maps-api:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+      - RegistrationLock__IsLocked=false
+      - RegistrationLock__RequireAdminApproval=false
+    ports:
+      - "5000:5000"     # Direct API access for testing
+    volumes:
+      - ../../src/MAPS.API:/app/src:ro   # Hot-reload source
+
+  maps-web:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    ports:
+      - "8080:8080"     # Direct web access
+
+  postgres:
+    ports:
+      - "5432:5432"     # Expose for local DB tools (DBeaver, pgAdmin)
+
+  redis:
+    ports:
+      - "6379:6379"     # Expose for local Redis CLI
+
+  minio:
+    ports:
+      - "9000:9000"     # MinIO API
+      - "9001:9001"     # MinIO Console UI
+
+  grafana:
+    ports:
+      - "3000:3000"     # Grafana dashboard direct access
+
+  prometheus:
+    ports:
+      - "9090:9090"     # Prometheus UI direct access
+
+  ollama:
+    ports:
+      - "11434:11434"   # Ollama API direct access
+
+  maps-whisper:
+    ports:
+      - "8090:8090"     # Whisper service direct access

@@ -1,0 +1,39 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'maps-monitor'
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+scrape_configs:
+
+  # MAPS API .NET metrics
+  - job_name: 'maps-api'
+    static_configs:
+      - targets: ['maps-api:5000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # PostgreSQL metrics (via postgres_exporter if added)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['maps-postgres:5432']
+    scrape_interval: 30s
+
+  # Redis metrics
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['maps-redis:6379']
+    scrape_interval: 30s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

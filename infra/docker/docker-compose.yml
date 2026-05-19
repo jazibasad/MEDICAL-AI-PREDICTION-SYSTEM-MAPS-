@@ -1,0 +1,286 @@
+version: "3.9"
+
+# ============================================================
+# MAPS — Docker Compose
+# All 11 containers · 4 networks · Persistent volumes
+# Start: docker compose up -d
+# Stop:  docker compose down
+# ============================================================
+
+networks:
+  maps-frontend:
+    driver: bridge
+  maps-backend:
+    driver: bridge
+    internal: true        # No external internet access
+  maps-ai:
+    driver: bridge
+    internal: true        # Isolated AI network
+  maps-monitoring:
+    driver: bridge
+    internal: true        # Monitoring only
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  ollama_models:
+  grafana_data:
+  loki_data:
+  ssl_certs:
+
+services:
+
+  # ──────────────────────────────────────────────────────────
+  # FRONTEND NETWORK
+  # ──────────────────────────────────────────────────────────
+
+  nginx:
+    image: nginx:alpine
+    container_name: maps-nginx
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ssl_certs:/etc/nginx/certs:ro
+    depends_on:
+      maps-api:
+        condition: service_healthy
+      maps-web:
+        condition: service_started
+    networks:
+      - maps-frontend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  maps-api:
+    build:
+      context: ../../
+      dockerfile: src/MAPS.API/Dockerfile
+    image: maps-api:latest
+    container_name: maps-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5000
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=mapsdb;Username=maps_user;Password=${DB_PASSWORD}
+      - ConnectionStrings__Redis=redis:6379,abortConnect=false
+      - JwtSettings__SecretKey=${JWT_SECRET_KEY}
+      - JwtSettings__Issuer=MAPS.API
+      - JwtSettings__Audience=MAPS.Clients
+      - JwtSettings__AccessTokenExpiryMinutes=15
+      - JwtSettings__RefreshTokenExpiryDays=7
+      - MinIO__Endpoint=minio:9000
+      - MinIO__AccessKey=${MINIO_ACCESS_KEY}
+      - MinIO__SecretKey=${MINIO_SECRET_KEY}
+      - MinIO__BucketName=maps-storage
+      - Ollama__BaseUrl=http://ollama:11434
+      - Ollama__Model=${OLLAMA_MODEL:-llama3}
+      - Whisper__BaseUrl=http://maps-whisper:8090
+      - RegistrationLock__IsLocked=${REGISTRATION_LOCKED:-true}
+      - RegistrationLock__RequireAdminApproval=${REQUIRE_ADMIN_APPROVAL:-true}
+    expose:
+      - "5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - maps-frontend
+      - maps-backend
+      - maps-ai
+    volumes:
+      - ../../models/onnx:/app/models/onnx:ro
+      - ../../models/mlnet:/app/models/mlnet:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  maps-web:
+    build:
+      context: ../../
+      dockerfile: src/MAPS.Web/Dockerfile
+    image: maps-web:latest
+    container_name: maps-web
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ApiSettings__BaseUrl=http://maps-api:5000
+    expose:
+      - "8080"
+    depends_on:
+      - maps-api
+    networks:
+      - maps-frontend
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────────────────
+  # BACKEND NETWORK
+  # ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: maps-postgres
+    environment:
+      POSTGRES_DB:       mapsdb
+      POSTGRES_USER:     maps_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - maps-backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maps_user -d mapsdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    command: >
+      postgres
+        -c max_connections=200
+        -c shared_buffers=256MB
+        -c effective_cache_size=512MB
+        -c work_mem=4MB
+
+  redis:
+    image: redis:7-alpine
+    container_name: maps-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    expose:
+      - "6379"
+    networks:
+      - maps-backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  minio:
+    image: minio/minio:latest
+    container_name: maps-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - miniodata:/data
+    expose:
+      - "9000"
+      - "9001"
+    networks:
+      - maps-backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ──────────────────────────────────────────────────────────
+  # AI NETWORK
+  # ──────────────────────────────────────────────────────────
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: maps-ollama
+    volumes:
+      - ollama_models:/root/.ollama
+    expose:
+      - "11434"
+    networks:
+      - maps-ai
+    restart: unless-stopped
+    environment:
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_MAX_LOADED_MODELS=1
+    # GPU support (uncomment if GPU available):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  maps-whisper:
+    build:
+      context: ../../
+      dockerfile: src/MAPS.Whisper/Dockerfile
+    image: maps-whisper:latest
+    container_name: maps-whisper
+    expose:
+      - "8090"
+    networks:
+      - maps-ai
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────────────────
+  # MONITORING NETWORK
+  # ──────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: maps-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    expose:
+      - "9090"
+    networks:
+      - maps-monitoring
+      - maps-frontend   # Can scrape API metrics
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: maps-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER:     ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_SERVER_ROOT_URL:         https://localhost/grafana
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    expose:
+      - "3000"
+    networks:
+      - maps-monitoring
+      - maps-frontend
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    container_name: maps-loki
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    expose:
+      - "3100"
+    networks:
+      - maps-monitoring
+      - maps-backend    # API can push logs to Loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
