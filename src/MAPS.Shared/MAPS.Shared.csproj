@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <RootNamespace>MAPS.Shared</RootNamespace>
+    <AssemblyName>MAPS.Shared</AssemblyName>
+  </PropertyGroup>
+</Project>
