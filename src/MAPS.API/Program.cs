@@ -1,29 +1,111 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 using Serilog;
+using MAPS.API.Data;
+using MAPS.API.Data.Repositories;
+using MAPS.API.Data.Repositories.Interfaces;
+using MAPS.API.Middleware;
+using MAPS.API.Services.Auth;
+using MAPS.API.Validators;
+using MAPS.Shared.Constants;
+using MAPS.Shared.Enums;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ─── Serilog ──────────────────────────────────────────────────────────────────
-builder.Host.UseSerilog((ctx, lc) => lc.ReadFrom.Configuration(ctx.Configuration));
+builder.Host.UseSerilog((ctx, lc) =>
+    lc.ReadFrom.Configuration(ctx.Configuration));
 
-// ─── Controllers & API ────────────────────────────────────────────────────────
+// ─── Database — PostgreSQL + EF Core ──────────────────────────────────────────
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsql => npgsql.EnableRetryOnFailure(3)));
+
+// ─── Repositories ─────────────────────────────────────────────────────────────
+builder.Services.AddScoped<IUserRepository,        UserRepository>();
+builder.Services.AddScoped<IAssignmentRepository,  AssignmentRepository>();
+builder.Services.AddScoped<IPredictionRepository,  PredictionRepository>();
+builder.Services.AddScoped<IRiskRepository,        RiskRepository>();
+builder.Services.AddScoped<IChatSessionRepository, ChatSessionRepository>();
+builder.Services.AddScoped<IAuditRepository,       AuditRepository>();
+
+// ─── Auth Services ────────────────────────────────────────────────────────────
+builder.Services.AddScoped<ITokenService,               TokenService>();
+builder.Services.AddScoped<IAuthService,                AuthService>();
+builder.Services.AddSingleton<IRegistrationLockService, RegistrationLockService>();
+
+// ─── JWT Authentication ───────────────────────────────────────────────────────
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme    = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer           = true,
+            ValidateAudience         = true,
+            ValidateLifetime         = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer              = builder.Configuration["JwtSettings:Issuer"],
+            ValidAudience            = builder.Configuration["JwtSettings:Audience"],
+            IssuerSigningKey         = new SymmetricSecurityKey(
+                                           Encoding.UTF8.GetBytes(
+                                               builder.Configuration["JwtSettings:SecretKey"]!)),
+            ClockSkew = TimeSpan.FromSeconds(30)
+        };
+        // SignalR token support (Chunk 8)
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                var token = ctx.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(token) &&
+                    ctx.HttpContext.Request.Path.StartsWithSegments("/api/chat"))
+                    ctx.Token = token;
+                return Task.CompletedTask;
+            }
+        };
+    });
+
+// ─── Authorization Policies ───────────────────────────────────────────────────
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(PolicyNames.AdminOnly, p =>
+        p.RequireClaim(ClaimTypeNames.Role, UserRole.Admin.ToString()));
+    options.AddPolicy(PolicyNames.DoctorOnly, p =>
+        p.RequireClaim(ClaimTypeNames.Role, UserRole.Doctor.ToString()));
+    options.AddPolicy(PolicyNames.PatientOnly, p =>
+        p.RequireClaim(ClaimTypeNames.Role, UserRole.Patient.ToString()));
+    options.AddPolicy(PolicyNames.DoctorOrAdmin, p =>
+        p.RequireClaim(ClaimTypeNames.Role,
+            UserRole.Doctor.ToString(), UserRole.Admin.ToString()));
+    options.AddPolicy(PolicyNames.AnyAuthenticatedUser, p =>
+        p.RequireAuthenticatedUser());
+});
+
+// ─── FluentValidation ─────────────────────────────────────────────────────────
+builder.Services.AddFluentValidationAutoValidation();
+builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
+
+// ─── Controllers & Swagger ────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new()
-    {
-        Title       = builder.Configuration["Swagger:Title"] ?? "MAPS API",
-        Version     = "v1",
-        Description = builder.Configuration["Swagger:Description"] ?? "Medical AI Prediction System"
-    });
+    c.SwaggerDoc("v1", new() { Title = "MAPS API", Version = "v1" });
     c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
     {
-        Name         = "Authorization",
-        Type         = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-        Scheme       = "bearer",
-        BearerFormat = "JWT",
-        In           = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description  = "Enter JWT token: Bearer {your token}"
+        Name = "Authorization", Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer", BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header
     });
     c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
     {
@@ -31,45 +113,39 @@ builder.Services.AddSwaggerGen(c =>
             new Microsoft.OpenApi.Models.OpenApiSecurityScheme
             {
                 Reference = new Microsoft.OpenApi.Models.OpenApiReference
-                {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id   = "Bearer"
-                }
+                    { Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme, Id = "Bearer" }
             },
             Array.Empty<string>()
         }
     });
 });
 
+// ─── Redis Cache ──────────────────────────────────────────────────────────────
+builder.Services.AddStackExchangeRedisCache(options =>
+    options.Configuration = builder.Configuration.GetConnectionString("Redis"));
+
 // ─── CORS ─────────────────────────────────────────────────────────────────────
-var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
-                     ?? Array.Empty<string>();
+var allowedOrigins = builder.Configuration
+    .GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 builder.Services.AddCors(options =>
-{
     options.AddPolicy("MAPSCorsPolicy", policy =>
-    {
         policy.WithOrigins(allowedOrigins)
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials(); // Required for SignalR
-    });
-});
+              .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
 // ─── Health Checks ────────────────────────────────────────────────────────────
-builder.Services.AddHealthChecks();
-
-// ─── TODO: Services registered in subsequent chunks ───────────────────────────
-// Chunk 2  → builder.Services.AddDbContext<AppDbContext>(...)
-// Chunk 3  → builder.Services.AddIdentity<AppUser,AppRole>(...)
-//             builder.Services.AddAuthentication(JwtBearerDefaults...)
-// Chunk 4  → builder.Services.AddHangfire(...)
-// Chunk 8  → builder.Services.AddSignalR()
-// Chunk 11 → builder.Services.AddSingleton<IWhisperService,WhisperService>()
-// Chunk 12 → builder.Services.AddScoped<IChatbotOrchestrator,ChatbotOrchestrator>()
+builder.Services.AddHealthChecks()
+    .AddNpgSql(builder.Configuration.GetConnectionString("DefaultConnection")!, name: "postgres")
+    .AddRedis(builder.Configuration.GetConnectionString("Redis")!, name: "redis");
 
 var app = builder.Build();
 
+// ─── Auto-seed on startup ─────────────────────────────────────────────────────
+using (var scope = app.Services.CreateScope())
+    await DbSeeder.SeedAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+
 // ─── Middleware Pipeline ───────────────────────────────────────────────────────
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -79,17 +155,13 @@ if (app.Environment.IsDevelopment())
 app.UseSerilogRequestLogging();
 app.UseCors("MAPSCorsPolicy");
 app.UseHttpsRedirection();
-
-// TODO Chunk 3: app.UseAuthentication(); app.UseAuthorization();
-// TODO Chunk 3: app.UseMiddleware<AuditLoggingMiddleware>();
-// TODO Chunk 13: app.UseMiddleware<RateLimitingMiddleware>();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseMiddleware<AuditLoggingMiddleware>();
 
 app.MapControllers();
 app.MapHealthChecks("/api/health");
 
-// TODO Chunk 8: app.MapHub<ChatHub>("/api/chat");
-
 app.Run();
 
-// Make Program accessible for integration tests (Chunk 15)
 public partial class Program { }
