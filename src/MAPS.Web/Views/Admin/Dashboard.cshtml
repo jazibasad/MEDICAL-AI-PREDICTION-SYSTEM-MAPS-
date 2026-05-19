@@ -1,0 +1,169 @@
+@{
+    ViewData["Title"] = "Admin Dashboard";
+    Layout = "_AdminLayout";
+}
+
+<div class="dashboard-header">
+    <h1 class="page-title">
+        <i class="bi bi-speedometer2"></i> System Dashboard
+    </h1>
+    <span class="text-muted" id="last-updated">Updating...</span>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4" id="stats-cards">
+    <div class="col-md-3">
+        <div class="stat-card bg-primary text-white">
+            <div class="stat-icon"><i class="bi bi-people-fill"></i></div>
+            <div class="stat-value" id="stat-users">—</div>
+            <div class="stat-label">Total Users</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-success text-white">
+            <div class="stat-icon"><i class="bi bi-person-badge-fill"></i></div>
+            <div class="stat-value" id="stat-doctors">—</div>
+            <div class="stat-label">Active Doctors</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-info text-white">
+            <div class="stat-icon"><i class="bi bi-heart-pulse-fill"></i></div>
+            <div class="stat-value" id="stat-patients">—</div>
+            <div class="stat-label">Patients</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-warning text-dark">
+            <div class="stat-icon"><i class="bi bi-clock-history"></i></div>
+            <div class="stat-value" id="stat-pending">—</div>
+            <div class="stat-label">Pending Approvals</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card bg-danger text-white">
+            <div class="stat-icon"><i class="bi bi-exclamation-triangle-fill"></i></div>
+            <div class="stat-value" id="stat-highrisk">—</div>
+            <div class="stat-label">High-Risk Patients</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-secondary text-white">
+            <div class="stat-icon"><i class="bi bi-cpu-fill"></i></div>
+            <div class="stat-value" id="stat-predictions">—</div>
+            <div class="stat-label">Total Predictions</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-dark text-white">
+            <div class="stat-icon"><i class="bi bi-graph-up-arrow"></i></div>
+            <div class="stat-value" id="stat-today">—</div>
+            <div class="stat-label">Today's Predictions</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-purple text-white" style="background:#7c3aed!important">
+            <div class="stat-icon"><i class="bi bi-link-45deg"></i></div>
+            <div class="stat-value" id="stat-assignments">—</div>
+            <div class="stat-label">Active Assignments</div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-bar-chart-fill text-primary me-2"></i>Predictions by Disease
+            </div>
+            <div class="card-body">
+                <canvas id="diseaseChart" height="220"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-graph-up text-success me-2"></i>Predictions — Last 7 Days
+            </div>
+            <div class="card-body">
+                <canvas id="trendChart" height="220"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const token = localStorage.getItem('maps_token');
+let diseaseChart, trendChart;
+
+async function loadDashboard() {
+    try {
+        const res  = await fetch('/api/analytics/dashboard', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const json = await res.json();
+        const d    = json.data;
+
+        document.getElementById('stat-users').textContent       = d.totalUsers;
+        document.getElementById('stat-doctors').textContent     = d.totalDoctors;
+        document.getElementById('stat-patients').textContent    = d.totalPatients;
+        document.getElementById('stat-pending').textContent     = d.pendingApprovals;
+        document.getElementById('stat-highrisk').textContent    = d.highRiskPatients;
+        document.getElementById('stat-predictions').textContent = d.totalPredictions;
+        document.getElementById('stat-today').textContent       = d.todayPredictions;
+        document.getElementById('stat-assignments').textContent = d.activeAssignments;
+        document.getElementById('last-updated').textContent     = 'Updated: ' + new Date().toLocaleTimeString();
+
+        renderDiseaseChart(d.predictionsByDisease);
+        renderTrendChart(d.predictionsByDay);
+    } catch(e) {
+        console.error('Dashboard load failed', e);
+    }
+}
+
+function renderDiseaseChart(data) {
+    const labels = Object.keys(data);
+    const values = Object.values(data);
+    const colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6'];
+
+    if (diseaseChart) diseaseChart.destroy();
+    diseaseChart = new Chart(document.getElementById('diseaseChart'), {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Predictions', data: values, backgroundColor: colors }] },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+    });
+}
+
+function renderTrendChart(data) {
+    const labels = Object.keys(data);
+    const values = Object.values(data);
+
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(document.getElementById('trendChart'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Predictions',
+                data: values,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16,185,129,0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: { responsive: true }
+    });
+}
+
+loadDashboard();
+setInterval(loadDashboard, 30000); // Auto-refresh every 30 seconds
+</script>
+}

@@ -1,0 +1,141 @@
+@{
+    ViewData["Title"] = "User Management";
+    Layout = "_AdminLayout";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title"><i class="bi bi-people-fill"></i> User Management</h1>
+    <div class="d-flex gap-2">
+        <input type="text" id="search-input" class="form-control"
+               placeholder="Search name or email..." style="width:260px"
+               oninput="loadUsers()">
+        <select id="role-filter" class="form-select" style="width:140px" onchange="loadUsers()">
+            <option value="">All Roles</option>
+            <option value="Doctor">Doctor</option>
+            <option value="Patient">Patient</option>
+            <option value="Admin">Admin</option>
+        </select>
+    </div>
+</div>
+
+<!-- Pending Alert Banner -->
+<div id="pending-banner" class="alert alert-warning d-none mb-3">
+    <i class="bi bi-clock-history me-2"></i>
+    <span id="pending-count"></span> user(s) awaiting approval.
+    <a href="/admin/pending" class="alert-link ms-1">Review now →</a>
+</div>
+
+<!-- Users Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0" id="users-table">
+            <thead class="table-dark">
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Approved</th>
+                    <th>Registered</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="users-tbody">
+                <tr><td colspan="7" class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm"></div> Loading...
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer d-flex justify-content-between align-items-center">
+        <span id="pagination-info" class="text-muted small"></span>
+        <div id="pagination-controls" class="d-flex gap-1"></div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const token = localStorage.getItem('maps_token');
+let currentPage = 1;
+
+const roleBadge = { Admin: 'danger', Doctor: 'primary', Patient: 'success' };
+
+async function loadUsers() {
+    const search = document.getElementById('search-input').value;
+    const role   = document.getElementById('role-filter').value;
+    const res    = await fetch(
+        `/api/users?page=${currentPage}&pageSize=20&searchTerm=${search}`,
+        { headers: { Authorization: 'Bearer ' + token } });
+    const json   = await res.json();
+    const d      = json.data;
+
+    const pending = d.items.filter(u => !u.isApproved).length;
+    if (pending > 0) {
+        document.getElementById('pending-banner').classList.remove('d-none');
+        document.getElementById('pending-count').textContent = pending;
+    }
+
+    document.getElementById('users-tbody').innerHTML = d.items.map(u => `
+        <tr>
+            <td><strong>${u.fullName}</strong></td>
+            <td class="text-muted small">${u.email}</td>
+            <td><span class="badge bg-${roleBadge[u.role] || 'secondary'}">${u.role}</span></td>
+            <td>${u.isActive
+                ? '<span class="badge bg-success">Active</span>'
+                : '<span class="badge bg-secondary">Inactive</span>'}</td>
+            <td>${u.isApproved
+                ? '<i class="bi bi-check-circle-fill text-success"></i>'
+                : '<i class="bi bi-clock text-warning"></i>'}</td>
+            <td class="small text-muted">${new Date(u.createdAt).toLocaleDateString()}</td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    ${!u.isApproved
+                        ? `<button class="btn btn-outline-success" onclick="approveUser('${u.userId}')">
+                               <i class="bi bi-check"></i> Approve</button>`
+                        : ''}
+                    ${u.isActive
+                        ? `<button class="btn btn-outline-warning" onclick="toggleActive('${u.userId}', false)">
+                               <i class="bi bi-pause"></i></button>`
+                        : `<button class="btn btn-outline-success" onclick="toggleActive('${u.userId}', true)">
+                               <i class="bi bi-play"></i></button>`}
+                    <button class="btn btn-outline-danger" onclick="deleteUser('${u.userId}')">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>`).join('');
+
+    document.getElementById('pagination-info').textContent =
+        `Showing ${d.items.length} of ${d.totalCount} users`;
+}
+
+async function approveUser(id) {
+    if (!confirm('Approve this user?')) return;
+    await fetch(`/api/users/${id}/approve`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    loadUsers();
+}
+
+async function toggleActive(id, activate) {
+    const path = activate ? 'activate' : 'deactivate';
+    await fetch(`/api/users/${id}/${path}`, {
+        method: 'PUT',
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    loadUsers();
+}
+
+async function deleteUser(id) {
+    if (!confirm('Delete this user? This action cannot be undone.')) return;
+    await fetch(`/api/users/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    loadUsers();
+}
+
+loadUsers();
+</script>
+}

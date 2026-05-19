@@ -120,6 +120,10 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// ─── Admin Services
+builder.Services.AddScoped<MAPS.API.Services.Admin.IAdminService,
+                            MAPS.API.Services.Admin.AdminService>();
+
 // ─── Redis Cache ──────────────────────────────────────────────────────────────
 builder.Services.AddStackExchangeRedisCache(options =>
     options.Configuration = builder.Configuration.GetConnectionString("Redis"));

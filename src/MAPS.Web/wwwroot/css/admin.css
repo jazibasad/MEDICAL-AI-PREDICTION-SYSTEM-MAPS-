@@ -1,0 +1,67 @@
+/* MAPS Admin Panel Styles */
+
+:root {
+    --sidebar-width: 240px;
+    --sidebar-collapsed: 60px;
+}
+
+body.maps-admin { background: #f1f5f9; font-family: 'Segoe UI', system-ui, sans-serif; }
+
+/* Sidebar */
+.sidebar {
+    width: var(--sidebar-width);
+    min-height: 100vh;
+    transition: width 0.2s ease;
+    flex-shrink: 0;
+}
+.sidebar.collapsed { width: var(--sidebar-collapsed); }
+.sidebar.collapsed .brand-text,
+.sidebar.collapsed .nav-link span:not(.badge) { display: none; }
+
+.sidebar-brand {
+    padding: 1.25rem 1rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.brand-icon { font-size: 1.4rem; }
+
+.sidebar .nav-link {
+    border-radius: 6px;
+    padding: 0.6rem 0.75rem;
+    margin-bottom: 2px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+}
+.sidebar .nav-link:hover  { background: rgba(255,255,255,0.1); }
+.sidebar .nav-link.active { background: rgba(255,255,255,0.2); font-weight: 600; }
+
+/* Main content */
+.main-content { min-height: 100vh; }
+
+/* Stat Cards */
+.stat-card {
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.stat-icon { font-size: 1.6rem; opacity: 0.9; }
+.stat-value { font-size: 2rem; font-weight: 700; line-height: 1; }
+.stat-label { font-size: 0.8rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Cards */
+.card { border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-radius: 12px; }
+.card-header { border-radius: 12px 12px 0 0 !important; }
+
+/* Page title */
+.page-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0; display: flex; align-items: center; gap: 0.5rem; }
+
+/* Table */
+.table th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }

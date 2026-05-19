@@ -1,0 +1,146 @@
+@{
+    ViewData["Title"] = "Doctor-Patient Assignments";
+    Layout = "_AdminLayout";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title"><i class="bi bi-diagram-3-fill"></i> Doctor-Patient Assignments</h1>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#assignModal">
+        <i class="bi bi-plus-lg me-1"></i> New Assignment
+    </button>
+</div>
+
+<div class="row g-3">
+    <!-- Doctors Panel -->
+    <div class="col-md-5">
+        <div class="card h-100">
+            <div class="card-header fw-semibold bg-primary text-white">
+                <i class="bi bi-person-badge me-2"></i>Doctors
+                <span id="doctor-count" class="badge bg-white text-primary ms-2">—</span>
+            </div>
+            <div class="card-body p-0">
+                <div id="doctors-list" class="list-group list-group-flush"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unassigned Patients Panel -->
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header fw-semibold bg-warning text-dark">
+                <i class="bi bi-person-x me-2"></i>Unassigned Patients
+                <span id="unassigned-count" class="badge bg-dark ms-2">—</span>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Blood Group</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="unassigned-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assign Modal -->
+<div class="modal fade" id="assignModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Assign Patient to Doctor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Select Doctor</label>
+                    <select id="modal-doctor" class="form-select"></select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Select Patient</label>
+                    <select id="modal-patient" class="form-select"></select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createAssignment()">
+                    <i class="bi bi-check-lg me-1"></i> Assign
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const token = localStorage.getItem('maps_token');
+
+async function loadAll() {
+    const [drRes, unRes] = await Promise.all([
+        fetch('/api/assignments/doctors',    { headers: { Authorization: 'Bearer ' + token } }),
+        fetch('/api/assignments/unassigned', { headers: { Authorization: 'Bearer ' + token } })
+    ]);
+    const doctors    = (await drRes.json()).data;
+    const unassigned = (await unRes.json()).data;
+
+    document.getElementById('doctor-count').textContent    = doctors.length;
+    document.getElementById('unassigned-count').textContent = unassigned.length;
+
+    // Doctors list
+    document.getElementById('doctors-list').innerHTML = doctors.map(d => `
+        <div class="list-group-item">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <strong>${d.fullName}</strong>
+                    <div class="text-muted small">${d.specialization} · ${d.department}</div>
+                </div>
+                <span class="badge bg-primary rounded-pill">${d.assignedPatientCount} patients</span>
+            </div>
+        </div>`).join('');
+
+    // Unassigned patients table
+    document.getElementById('unassigned-tbody').innerHTML = unassigned.map(p => `
+        <tr>
+            <td><strong>${p.fullName}</strong></td>
+            <td class="small text-muted">${p.email}</td>
+            <td><span class="badge bg-secondary">${p.bloodGroup || '—'}</span></td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary"
+                        onclick="quickAssign('${p.patientId}')">
+                    <i class="bi bi-person-check"></i> Assign
+                </button>
+            </td>
+        </tr>`).join('');
+
+    // Populate modal selects
+    document.getElementById('modal-doctor').innerHTML  =
+        doctors.map(d => `<option value="${d.doctorId}">${d.fullName} (${d.specialization})</option>`).join('');
+    document.getElementById('modal-patient').innerHTML =
+        unassigned.map(p => `<option value="${p.patientId}">${p.fullName}</option>`).join('');
+}
+
+function quickAssign(patientId) {
+    document.getElementById('modal-patient').value = patientId;
+    new bootstrap.Modal(document.getElementById('assignModal')).show();
+}
+
+async function createAssignment() {
+    const doctorId  = document.getElementById('modal-doctor').value;
+    const patientId = document.getElementById('modal-patient').value;
+    await fetch('/api/assignments', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doctorId, patientId })
+    });
+    bootstrap.Modal.getInstance(document.getElementById('assignModal')).hide();
+    loadAll();
+}
+
+loadAll();
+</script>
+}
