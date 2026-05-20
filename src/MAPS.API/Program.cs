@@ -124,6 +124,16 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<MAPS.API.Services.Admin.IAdminService,
                             MAPS.API.Services.Admin.AdminService>();
 
+// ─── Patient & Scheduling Services
+builder.Services.AddScoped<MAPS.API.Services.Patient.IPatientService,
+                            MAPS.API.Services.Patient.PatientService>();
+builder.Services.AddScoped<MAPS.API.Services.Scheduling.IAppointmentPriorityEngine,
+                            MAPS.API.Services.Scheduling.AppointmentPriorityEngine>();
+
+// ─── Doctor Services
+builder.Services.AddScoped<MAPS.API.Services.Doctor.IDoctorService,
+                            MAPS.API.Services.Doctor.DoctorService>();
+
 // ─── Redis Cache ──────────────────────────────────────────────────────────────
 builder.Services.AddStackExchangeRedisCache(options =>
     options.Configuration = builder.Configuration.GetConnectionString("Redis"));

@@ -1,0 +1,175 @@
+@{
+    ViewData["Title"] = "Book Appointment";
+    Layout = "_PatientLayout";
+}
+
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/patient/dashboard">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="/patient/appointments">Appointments</a></li>
+            <li class="breadcrumb-item active">Book New</li>
+        </ol>
+    </nav>
+    <h1 class="page-title"><i class="bi bi-calendar-plus text-primary"></i> Book Appointment</h1>
+</div>
+
+<!-- Priority Tier Notice -->
+<div class="alert alert-primary d-flex gap-3 mb-4" id="priority-notice">
+    <i class="bi bi-info-circle-fill fs-4 flex-shrink-0 mt-1"></i>
+    <div>
+        <strong>Smart Priority Scheduling</strong><br>
+        Your appointment time is automatically prioritised based on your current health risk score.
+        Available slots are calculated by the MAPS Priority Engine.
+        <span id="priority-display" class="fw-bold ms-1"></span>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Available Slots -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-clock text-success me-2"></i>
+                Recommended Available Slots
+            </div>
+            <div class="list-group list-group-flush" id="slots-list">
+                <div class="list-group-item text-center py-3">
+                    <div class="spinner-border spinner-border-sm text-primary"></div>
+                    Loading available slots...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Booking Form -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-pencil text-warning me-2"></i>
+                Choose a Custom Time
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Preferred Date & Time</label>
+                    <input type="datetime-local" class="form-control" id="custom-datetime"
+                           min="" />
+                    <div class="form-text">Clinic hours: Mon–Fri, 08:00–17:00</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Duration</label>
+                    <select class="form-select" id="duration">
+                        <option value="30">30 minutes (standard)</option>
+                        <option value="60">60 minutes (extended)</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Notes (optional)</label>
+                    <textarea class="form-control" id="notes" rows="3"
+                              placeholder="Reason for visit, symptoms..."></textarea>
+                </div>
+                <button class="btn btn-primary w-100" onclick="bookCustom()">
+                    <i class="bi bi-check-circle me-2"></i>Book This Appointment
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="text-success fs-1 mb-3"><i class="bi bi-check-circle-fill"></i></div>
+                <h5 class="fw-bold">Appointment Booked!</h5>
+                <p id="success-message" class="text-muted"></p>
+                <a href="/patient/appointments" class="btn btn-primary mt-2">View My Appointments</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const token = localStorage.getItem('maps_token');
+
+// Set min datetime to now
+const now = new Date();
+now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+document.getElementById('custom-datetime').min = now.toISOString().slice(0,16);
+
+async function loadSlots() {
+    const res  = await fetch('/api/appointments/slots', {
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    const json = await res.json();
+    const slots = json.data;
+
+    if (!slots || slots.length === 0) {
+        document.getElementById('slots-list').innerHTML =
+            '<div class="list-group-item text-muted text-center py-3">No slots found in your priority window.</div>';
+        return;
+    }
+
+    const tierBadge = { Emergency:'danger', Urgent:'warning', Normal:'primary', Followup:'success' };
+    document.getElementById('priority-display').innerHTML =
+        `Your Priority: <span class="badge bg-${tierBadge[slots[0].priorityTier] || 'secondary'}">${slots[0].priorityTier}</span>`;
+
+    document.getElementById('slots-list').innerHTML = slots.map((s, i) => `
+        <div class="list-group-item list-group-item-action" onclick="selectSlot('${s.dateTime}', this)">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${new Date(s.dateTime).toLocaleDateString('en-US',
+                        { weekday:'short', month:'short', day:'numeric' })}</strong>
+                    <span class="text-muted ms-2">
+                        ${new Date(s.dateTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                    </span>
+                </div>
+                <span class="badge bg-${tierBadge[s.priorityTier] || 'secondary'}">${s.priorityTier}</span>
+            </div>
+        </div>`).join('');
+}
+
+let selectedDateTime = null;
+
+function selectSlot(datetime, el) {
+    selectedDateTime = datetime;
+    document.querySelectorAll('#slots-list .list-group-item').forEach(e =>
+        e.classList.remove('active'));
+    el.classList.add('active');
+
+    // Auto-fill custom input
+    const d = new Date(datetime);
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    document.getElementById('custom-datetime').value = d.toISOString().slice(0,16);
+}
+
+async function bookCustom() {
+    const dt = document.getElementById('custom-datetime').value;
+    if (!dt) { alert('Please select a date and time.'); return; }
+
+    const body = {
+        preferredDateTime: new Date(dt).toISOString(),
+        durationMinutes:   parseInt(document.getElementById('duration').value),
+        notes:             document.getElementById('notes').value
+    };
+
+    const res  = await fetch('/api/appointments', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const json = await res.json();
+
+    if (json.success) {
+        document.getElementById('success-message').textContent = json.message;
+        new bootstrap.Modal(document.getElementById('successModal')).show();
+    } else {
+        alert('Booking failed: ' + json.message);
+    }
+}
+
+loadSlots();
+</script>
+}
