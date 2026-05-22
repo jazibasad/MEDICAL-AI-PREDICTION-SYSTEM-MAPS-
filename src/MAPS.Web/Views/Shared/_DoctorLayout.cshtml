@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] — MAPS Doctor</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
+    <link rel="stylesheet" href="/css/doctor.css" />
+</head>
+<body class="maps-doctor">
+<div class="d-flex" id="wrapper">
+
+    <!-- Sidebar -->
+    <nav class="sidebar bg-dark" id="sidebar">
+        <div class="sidebar-brand">
+            <span>🩺</span>
+            <span class="brand-text">MAPS Doctor</span>
+        </div>
+        <hr class="border-secondary" />
+        <ul class="nav flex-column px-2">
+            <li class="nav-item">
+                <a class="nav-link text-white" href="/doctor/dashboard">
+                    <i class="bi bi-speedometer2 me-2"></i>Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link text-white" href="/doctor/patients">
+                    <i class="bi bi-people me-2"></i>My Patients
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link text-white" href="/doctor/predictions/new">
+                    <i class="bi bi-cpu me-2"></i>AI Prediction
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link text-white" href="/doctor/chatbot">
+                    <i class="bi bi-robot me-2"></i>AI Assistant
+                    <span class="badge bg-warning text-dark ms-1">NEW</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link text-white" href="/doctor/chat">
+                    <i class="bi bi-chat-dots me-2"></i>Messages
+                    <span class="badge bg-danger ms-auto" id="msg-badge" style="display:none">0</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link text-white" href="/doctor/prescriptions">
+                    <i class="bi bi-capsule me-2"></i>Prescriptions
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link text-white" href="/doctor/reports">
+                    <i class="bi bi-file-earmark-pdf me-2"></i>Reports
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link text-white" href="/doctor/appointments">
+                    <i class="bi bi-calendar-check me-2"></i>Appointments
+                </a>
+            </li>
+        </ul>
+        <hr class="border-secondary" />
+        <div class="px-3 pb-3">
+            <div class="text-white-50 small px-1 mb-2" id="sidebar-doctor-name"></div>
+            <a href="/logout" class="btn btn-outline-light btn-sm w-100">
+                <i class="bi bi-box-arrow-left me-1"></i>Logout
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main -->
+    <div class="main-content flex-grow-1">
+        <nav class="navbar navbar-light bg-white border-bottom px-4">
+            <button class="btn btn-sm btn-outline-secondary" id="sidebar-toggle">
+                <i class="bi bi-list"></i>
+            </button>
+            <span class="ms-auto small text-muted" id="nav-date"></span>
+        </nav>
+        <div class="container-fluid p-4">
+            @RenderBody()
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const token = localStorage.getItem('maps_token');
+    if (!token) window.location.href = '/login';
+
+    document.getElementById('nav-date').textContent =
+        new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+    document.getElementById('sidebar-toggle').addEventListener('click', () =>
+        document.getElementById('sidebar').classList.toggle('collapsed'));
+</script>
+@RenderSection("Scripts", required: false)
+</body>
+</html>

@@ -1,0 +1,189 @@
+@{
+    ViewData["Title"] = "Doctor Dashboard";
+    Layout = "_DoctorLayout";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title"><i class="bi bi-house-heart-fill"></i> Doctor Dashboard</h1>
+    <div class="d-flex gap-2 align-items-center">
+        <span class="badge bg-danger px-3 py-2" id="high-risk-badge" style="display:none!important">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <span id="high-risk-count">0</span> High-Risk Alert
+        </span>
+        <small class="text-muted" id="last-refresh">Refreshing...</small>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card border-start border-primary border-4 bg-white shadow-sm">
+            <div class="stat-value text-primary" id="stat-total">—</div>
+            <div class="stat-label">My Patients</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card border-start border-danger border-4 bg-white shadow-sm">
+            <div class="stat-value text-danger" id="stat-highrisk">—</div>
+            <div class="stat-label">High Risk</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card border-start border-success border-4 bg-white shadow-sm">
+            <div class="stat-value text-success" id="stat-predictions">—</div>
+            <div class="stat-label">Today's Predictions</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card border-start border-warning border-4 bg-white shadow-sm">
+            <div class="stat-value text-warning" id="stat-messages">—</div>
+            <div class="stat-label">Unread Messages</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Patient Queue -->
+    <div class="col-md-7">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">
+                    <i class="bi bi-list-ol text-primary me-2"></i>Patient Queue
+                    <small class="text-muted ms-1">(sorted by risk)</small>
+                </span>
+                <a href="/doctor/patients" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Patient</th>
+                            <th>Risk Score</th>
+                            <th>Urgency</th>
+                            <th>Next Appt</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="queue-tbody">
+                        <tr><td colspan="5" class="text-center py-3">
+                            <div class="spinner-border spinner-border-sm text-primary"></div>
+                        </td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Today's Appointments -->
+    <div class="col-md-5">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-calendar-check text-success me-2"></i>
+                Today's Appointments
+            </div>
+            <div class="list-group list-group-flush" id="today-appts">
+                <div class="list-group-item text-center text-muted py-3">
+                    <div class="spinner-border spinner-border-sm"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card mt-3">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-lightning-charge-fill text-warning me-2"></i>Quick Actions
+            </div>
+            <div class="card-body d-grid gap-2">
+                <a href="/doctor/chatbot" class="btn btn-primary">
+                    <i class="bi bi-robot me-2"></i>AI Clinical Assistant
+                </a>
+                <a href="/doctor/predictions/new" class="btn btn-outline-info">
+                    <i class="bi bi-cpu me-2"></i>New AI Prediction
+                </a>
+                <a href="/doctor/prescriptions/create" class="btn btn-outline-success">
+                    <i class="bi bi-capsule me-2"></i>Write Prescription
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const token = localStorage.getItem('maps_token');
+
+const tierBadge = {
+    Emergency: 'danger',
+    Urgent:    'warning',
+    Normal:    'primary',
+    Followup:  'success',
+    Unknown:   'secondary'
+};
+
+async function loadDashboard() {
+    try {
+        const res  = await fetch('/api/doctor/dashboard', {
+            headers: { Authorization: 'Bearer ' + token }
+        });
+        const json = await res.json();
+        const d    = json.data;
+
+        document.getElementById('stat-total').textContent      = d.totalPatients;
+        document.getElementById('stat-highrisk').textContent   = d.highRiskCount;
+        document.getElementById('stat-predictions').textContent = d.todayPredictions;
+        document.getElementById('stat-messages').textContent   = d.unreadMessages;
+        document.getElementById('last-refresh').textContent    = 'Updated ' + new Date().toLocaleTimeString();
+
+        if (d.highRiskCount > 0) {
+            document.getElementById('high-risk-badge').style.removeProperty('display');
+            document.getElementById('high-risk-count').textContent = d.highRiskCount;
+        }
+
+        // Patient Queue
+        document.getElementById('queue-tbody').innerHTML = d.patientQueue.map(p => `
+            <tr>
+                <td><a href="/doctor/patients/${p.patientId}" class="text-decoration-none fw-semibold">
+                    ${p.fullName}
+                </a></td>
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-1" style="height:6px">
+                            <div class="progress-bar" style="width:${p.riskScore}%;background:${p.urgencyColor}"></div>
+                        </div>
+                        <small class="fw-bold" style="color:${p.urgencyColor}">${p.riskScore.toFixed(0)}</small>
+                    </div>
+                </td>
+                <td><span class="badge bg-${tierBadge[p.urgencyTier] || 'secondary'}">${p.urgencyTier}</span></td>
+                <td class="small text-muted">${p.nextAppt
+                    ? new Date(p.nextAppt).toLocaleDateString()
+                    : '—'}</td>
+                <td>
+                    <a href="/doctor/patients/${p.patientId}"
+                       class="btn btn-sm btn-outline-primary">View</a>
+                </td>
+            </tr>`).join('');
+
+        // Today's Appointments
+        document.getElementById('today-appts').innerHTML =
+            d.upcomingToday.length === 0
+            ? `<div class="list-group-item text-muted text-center py-3">No appointments today</div>`
+            : d.upcomingToday.map(a => `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <strong>${a.patientName}</strong>
+                        <span class="badge bg-${tierBadge[a.priorityTier] || 'secondary'}">${a.priorityTier}</span>
+                    </div>
+                    <small class="text-muted">
+                        ${new Date(a.dateTime).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
+                        · ${a.status}
+                    </small>
+                </div>`).join('');
+
+    } catch(e) {
+        console.error('Dashboard error', e);
+    }
+}
+
+loadDashboard();
+setInterval(loadDashboard, 30000);
+</script>
+}
