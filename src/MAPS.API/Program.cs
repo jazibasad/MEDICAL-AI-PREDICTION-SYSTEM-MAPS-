@@ -124,9 +124,28 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<MAPS.API.Services.Admin.IAdminService,
                             MAPS.API.Services.Admin.AdminService>();
 
+// ─── Patient & Scheduling Services
+builder.Services.AddScoped<MAPS.API.Services.Patient.IPatientService,
+                            MAPS.API.Services.Patient.PatientService>();
+builder.Services.AddScoped<MAPS.API.Services.Scheduling.IAppointmentPriorityEngine,
+                            MAPS.API.Services.Scheduling.AppointmentPriorityEngine>();
+
 // ─── Doctor Services
 builder.Services.AddScoped<MAPS.API.Services.Doctor.IDoctorService,
                             MAPS.API.Services.Doctor.DoctorService>();
+
+// ─── SignalR (Real-time chat)
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+    options.MaximumReceiveMessageSize = 10 * 1024 * 1024; // 10MB for file sharing
+});
+
+// ─── Storage & Reports
+builder.Services.AddSingleton<MAPS.API.Services.Storage.IMinioStorageService,
+                               MAPS.API.Services.Storage.MinioStorageService>();
+builder.Services.AddScoped<MAPS.API.Services.Reports.IReportService,
+                            MAPS.API.Services.Reports.ReportService>();
 
 // ─── Redis Cache ──────────────────────────────────────────────────────────────
 builder.Services.AddStackExchangeRedisCache(options =>
@@ -169,6 +188,7 @@ app.UseMiddleware<AuditLoggingMiddleware>();
 
 app.MapControllers();
 app.MapHealthChecks("/api/health");
+app.MapHub<MAPS.API.Hubs.ChatHub>("/api/chat");
 
 app.Run();
 
