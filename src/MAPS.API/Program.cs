@@ -124,6 +124,18 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<MAPS.API.Services.Admin.IAdminService,
                             MAPS.API.Services.Admin.AdminService>();
 
+// ─── ML.NET Prediction Services
+builder.Services.AddSingleton<MAPS.ML.Prediction.IDiabetesPredictor,
+                               MAPS.ML.Prediction.DiabetesPredictor>();
+builder.Services.AddSingleton<MAPS.ML.Prediction.IHeartDiseasePredictor,
+                               MAPS.ML.Prediction.HeartDiseasePredictor>();
+builder.Services.AddSingleton<MAPS.ML.Prediction.IDifferentialDiagnosisEngine,
+                               MAPS.ML.Prediction.DifferentialDiagnosisEngine>();
+builder.Services.AddSingleton<MAPS.API.Services.Prediction.IOllamaService,
+                               MAPS.API.Services.Prediction.OllamaService>();
+builder.Services.AddScoped<MAPS.API.Services.Prediction.IPredictionService,
+                            MAPS.API.Services.Prediction.PredictionService>();
+
 // ─── Patient & Scheduling Services
 builder.Services.AddScoped<MAPS.API.Services.Patient.IPatientService,
                             MAPS.API.Services.Patient.PatientService>();
