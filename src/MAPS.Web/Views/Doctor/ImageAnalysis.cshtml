@@ -1,0 +1,449 @@
+@{
+    ViewData["Title"] = "Medical Image Analysis";
+    Layout = "_DoctorLayout";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title">
+        <i class="bi bi-eye-fill text-info"></i> Medical Image Analysis
+    </h1>
+    <div class="alert alert-warning py-1 px-3 mb-0 small">
+        <i class="bi bi-shield-exclamation me-1"></i>
+        AI analysis is for decision support only — radiologist review required.
+    </div>
+</div>
+
+<div class="row g-3">
+
+    <!-- Upload Panel -->
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-upload text-primary me-2"></i>Upload Medical Image
+            </div>
+            <div class="card-body">
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Patient</label>
+                    <select class="form-select" id="patient-select"></select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Image Type</label>
+                    <select class="form-select" id="disease-select" onchange="updateHint()">
+                        <option value="3">Pneumonia — Chest X-Ray</option>
+                        <option value="4">Brain Tumour — MRI Scan</option>
+                        <option value="5">Skin Cancer — Lesion Photo</option>
+                    </select>
+                    <div class="form-text" id="disease-hint">
+                        Upload a frontal chest X-Ray (PA or AP view)
+                    </div>
+                </div>
+
+                <!-- Drop Zone -->
+                <div class="drop-zone" id="drop-zone"
+                     ondrop="handleDrop(event)"
+                     ondragover="event.preventDefault()"
+                     ondragleave="this.classList.remove('dragover')"
+                     ondragenter="this.classList.add('dragover')">
+                    <i class="bi bi-cloud-upload fs-1 text-primary d-block mb-2"></i>
+                    <p class="text-muted small mb-2">Drag & drop image here or</p>
+                    <label class="btn btn-outline-primary btn-sm">
+                        Browse Files
+                        <input type="file" id="file-input" class="d-none"
+                               accept=".jpg,.jpeg,.png,.dcm"
+                               onchange="handleFileSelect(this)">
+                    </label>
+                    <div class="mt-2 small text-muted" id="file-name"></div>
+                </div>
+
+                <!-- Image Preview -->
+                <div id="preview-container" class="mt-3 text-center d-none">
+                    <img id="preview-img" class="img-fluid rounded shadow-sm"
+                         style="max-height:200px;object-fit:contain">
+                    <div class="small text-muted mt-1" id="preview-info"></div>
+                </div>
+
+                <button class="btn btn-primary w-100 mt-3" id="analyse-btn"
+                        onclick="runAnalysis()" disabled>
+                    <i class="bi bi-cpu me-2"></i>Analyse Image
+                </button>
+            </div>
+        </div>
+
+        <!-- Previous Analyses -->
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-clock-history me-2 text-secondary"></i>Recent Analyses
+            </div>
+            <div class="list-group list-group-flush" id="recent-list">
+                <div class="list-group-item text-muted small text-center py-3">
+                    Select a patient to view history
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div class="col-md-8">
+
+        <!-- Loading -->
+        <div class="card d-none" id="loading-card">
+            <div class="card-body text-center py-5">
+                <div class="spinner-border text-info mb-3" style="width:3rem;height:3rem"></div>
+                <h6 class="text-muted">Running ONNX CNN inference...</h6>
+                <p class="text-muted small">CLAHE preprocessing → ResNet/DenseNet → Post-processing</p>
+            </div>
+        </div>
+
+        <!-- Result -->
+        <div class="card d-none" id="result-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">
+                    <i class="bi bi-activity text-info me-2"></i>Analysis Result
+                </span>
+                <div class="d-flex gap-2">
+                    <span class="badge fs-6" id="result-badge">—</span>
+                    <button class="btn btn-sm btn-outline-primary" onclick="downloadReport()">
+                        <i class="bi bi-file-pdf me-1"></i>PDF Report
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+
+                    <!-- Image with bounding box overlay -->
+                    <div class="col-md-6">
+                        <div class="image-container position-relative">
+                            <img id="result-image" class="img-fluid rounded w-100"
+                                 style="max-height:320px;object-fit:contain;background:#000">
+                            <!-- Bounding box overlay rendered by canvas -->
+                            <canvas id="bbox-canvas" class="position-absolute top-0 start-0 w-100 h-100"
+                                    style="pointer-events:none"></canvas>
+                        </div>
+                        <div class="text-center mt-2">
+                            <span class="badge bg-secondary" id="result-modality">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Result Details -->
+                    <div class="col-md-6">
+                        <!-- Primary Finding -->
+                        <div class="p-3 rounded mb-3" id="finding-box"
+                             style="border-left:4px solid #3b82f6;background:#eff6ff">
+                            <div class="small text-muted mb-1">PRIMARY FINDING</div>
+                            <div class="fs-5 fw-bold" id="result-label">—</div>
+                        </div>
+
+                        <!-- Confidence -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="small fw-semibold">Model Confidence</span>
+                                <span class="small fw-bold" id="result-conf-pct">—</span>
+                            </div>
+                            <div class="progress" style="height:12px">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                     id="conf-bar" style="width:0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Detected Regions -->
+                        <div class="mb-3" id="regions-section" style="display:none">
+                            <div class="small fw-semibold mb-2">Detected Regions</div>
+                            <div id="regions-list"></div>
+                        </div>
+
+                        <!-- Report Summary -->
+                        <div class="p-3 rounded" style="background:#f9fafb;border:1px solid #e5e7eb">
+                            <div class="small fw-semibold mb-1">
+                                <i class="bi bi-file-text me-1"></i>AI Summary
+                            </div>
+                            <p class="small text-muted mb-0" id="result-summary">—</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Disclaimer -->
+                <div class="alert alert-warning mt-3 small mb-0">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <strong>AI Disclaimer:</strong> This analysis uses ONNX CNN inference for
+                    clinical decision support only. Confidence scores represent model probability,
+                    not clinical certainty. All findings must be validated by a qualified clinician
+                    or radiologist before any clinical action.
+                </div>
+            </div>
+        </div>
+
+        <!-- Empty state -->
+        <div class="card" id="empty-card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-eye fs-1 text-muted d-block mb-3 opacity-25"></i>
+                <p class="text-muted">Upload a medical image to see the AI analysis here.</p>
+                <p class="text-muted small">Supported: Chest X-Ray (Pneumonia), MRI (Brain Tumour), Lesion Photo (Skin Cancer)</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const token = localStorage.getItem('maps_token');
+let selectedFile  = null;
+let currentImageId = null;
+
+const diseaseHints = {
+    3: 'Upload a frontal chest X-Ray (PA or AP view). JPEG or PNG.',
+    4: 'Upload an axial or coronal brain MRI slice. JPEG or PNG.',
+    5: 'Upload a close-up dermoscopy or smartphone photo of the skin lesion.'
+};
+
+function updateHint() {
+    const disease = document.getElementById('disease-select').value;
+    document.getElementById('disease-hint').textContent = diseaseHints[disease] || '';
+}
+
+// Load patient queue
+async function loadPatients() {
+    const res  = await fetch('/api/patients/queue', {
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    const json = await res.json();
+    const sel  = document.getElementById('patient-select');
+    sel.innerHTML = '<option value="">Select patient...</option>';
+    json.data.forEach(p => {
+        const o = document.createElement('option');
+        o.value = p.patientId;
+        o.textContent = `${p.fullName} — ${p.urgencyTier}`;
+        sel.appendChild(o);
+    });
+    sel.onchange = () => loadRecentAnalyses(sel.value);
+}
+
+function handleFileSelect(input) {
+    if (!input.files[0]) return;
+    selectedFile = input.files[0];
+    showPreview(selectedFile);
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('drop-zone').classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) { selectedFile = file; showPreview(file); }
+}
+
+function showPreview(file) {
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('analyse-btn').disabled = false;
+
+    const reader = new FileReader();
+    reader.onload = e => {
+        document.getElementById('preview-img').src = e.target.result;
+        document.getElementById('preview-info').textContent =
+            `${file.name} · ${(file.size/1024).toFixed(0)} KB`;
+        document.getElementById('preview-container').classList.remove('d-none');
+    };
+    reader.readAsDataURL(file);
+}
+
+async function runAnalysis() {
+    const patientId = document.getElementById('patient-select').value;
+    const disease   = document.getElementById('disease-select').value;
+    if (!patientId) { alert('Please select a patient.'); return; }
+    if (!selectedFile) { alert('Please select an image.'); return; }
+
+    // Show loading
+    document.getElementById('loading-card').classList.remove('d-none');
+    document.getElementById('result-card').classList.add('d-none');
+    document.getElementById('empty-card').classList.add('d-none');
+    document.getElementById('analyse-btn').disabled = true;
+
+    const form = new FormData();
+    form.append('file',      selectedFile);
+    form.append('patientId', patientId);
+    form.append('disease',   disease);
+
+    try {
+        const res  = await fetch('/api/images/analyse', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + token },
+            body: form
+        });
+        const json = await res.json();
+
+        document.getElementById('loading-card').classList.add('d-none');
+        document.getElementById('analyse-btn').disabled = false;
+
+        if (json.success) {
+            showResult(json.data);
+            loadRecentAnalyses(patientId);
+        } else {
+            document.getElementById('empty-card').classList.remove('d-none');
+            alert('Analysis failed: ' + json.message);
+        }
+    } catch(e) {
+        document.getElementById('loading-card').classList.add('d-none');
+        document.getElementById('empty-card').classList.remove('d-none');
+        document.getElementById('analyse-btn').disabled = false;
+        alert('Network error: ' + e.message);
+    }
+}
+
+function showResult(data) {
+    currentImageId = data.imageId;
+    document.getElementById('result-card').classList.remove('d-none');
+    document.getElementById('empty-card').classList.add('d-none');
+
+    // Badge
+    const badge = document.getElementById('result-badge');
+    badge.textContent = data.isPositive ? '⚠️ Positive Finding' : '✅ No Significant Finding';
+    badge.className   = 'badge fs-6 ' + (data.isPositive ? 'bg-danger' : 'bg-success');
+
+    // Finding box
+    document.getElementById('result-label').textContent = data.primaryLabel;
+    document.getElementById('result-modality').textContent = data.modality;
+
+    const findingBox = document.getElementById('finding-box');
+    findingBox.style.borderLeftColor = data.isPositive ? '#ef4444' : '#10b981';
+    findingBox.style.background      = data.isPositive ? '#fef2f2' : '#f0fdf4';
+
+    // Confidence
+    const pct = (data.confidence * 100).toFixed(1);
+    document.getElementById('result-conf-pct').textContent = pct + '%';
+    const bar = document.getElementById('conf-bar');
+    bar.style.width = pct + '%';
+    bar.className   = 'progress-bar progress-bar-striped ' +
+        (data.confidence > 0.7 ? 'bg-danger' :
+         data.confidence > 0.4 ? 'bg-warning' : 'bg-success');
+
+    // Summary
+    document.getElementById('result-summary').textContent = data.reportSummary;
+
+    // Image with bounding box
+    const resultImg = document.getElementById('result-image');
+    resultImg.src   = data.imageUrl;
+    resultImg.onload = () => drawBoundingBoxes(data);
+
+    // Detected regions
+    try {
+        const aiResult = JSON.parse(data.aiResultJson);
+        const regions  = aiResult.DetectedRegions || [];
+        if (regions.length > 0) {
+            document.getElementById('regions-section').style.display = '';
+            document.getElementById('regions-list').innerHTML = regions.map(r => `
+                <div class="d-flex align-items-center gap-2 mb-1 p-2 rounded bg-light">
+                    <span class="badge bg-danger">${(r.Confidence * 100).toFixed(0)}%</span>
+                    <span class="small fw-semibold">${r.Label}</span>
+                    <span class="small text-muted">${r.Description?.substring(0, 60)}...</span>
+                </div>`).join('');
+        }
+    } catch {}
+}
+
+function drawBoundingBoxes(data) {
+    const img    = document.getElementById('result-image');
+    const canvas = document.getElementById('bbox-canvas');
+    canvas.width = img.naturalWidth || img.clientWidth;
+    canvas.height= img.naturalHeight || img.clientHeight;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!data.isPositive) return;
+
+    try {
+        const aiResult = JSON.parse(data.aiResultJson);
+        const regions  = aiResult.DetectedRegions || [];
+
+        regions.forEach(r => {
+            const box = r.Box;
+            if (!box) return;
+            const x = box.X * canvas.width;
+            const y = box.Y * canvas.height;
+            const w = box.Width * canvas.width;
+            const h = box.Height * canvas.height;
+
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth   = 3;
+            ctx.setLineDash([8, 4]);
+            ctx.strokeRect(x, y, w, h);
+
+            // Label
+            ctx.fillStyle = 'rgba(239,68,68,0.85)';
+            ctx.fillRect(x, y - 24, w, 24);
+            ctx.fillStyle    = 'white';
+            ctx.font         = 'bold 13px Arial';
+            ctx.fillText(`${r.Label} ${(r.Confidence*100).toFixed(0)}%`, x + 6, y - 7);
+        });
+    } catch {}
+}
+
+async function loadRecentAnalyses(patientId) {
+    if (!patientId) return;
+    const res  = await fetch(`/api/images/patient/${patientId}`, {
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    const json = await res.json();
+    const list = document.getElementById('recent-list');
+
+    if (!json.data || json.data.length === 0) {
+        list.innerHTML = '<div class="list-group-item text-muted small text-center py-2">No previous analyses</div>';
+        return;
+    }
+
+    list.innerHTML = json.data.slice(0, 5).map(img => {
+        let result = {};
+        try { result = JSON.parse(img.aiResultJson); } catch {}
+        return `
+        <div class="list-group-item list-group-item-action small py-2"
+             onclick="viewAnalysis('${img.imageId}')">
+            <div class="d-flex justify-content-between">
+                <strong>${img.modality}</strong>
+                <span class="badge ${result.IsPositive ? 'bg-danger' : 'bg-success'}">
+                    ${result.IsPositive ? 'Positive' : 'Negative'}
+                </span>
+            </div>
+            <div class="text-muted">${new Date(img.analysedAt).toLocaleDateString()}</div>
+        </div>`;
+    }).join('');
+}
+
+async function viewAnalysis(imageId) {
+    const res  = await fetch(`/api/images/${imageId}`, {
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    const json = await res.json();
+    if (json.success) showResult(json.data);
+}
+
+async function downloadReport() {
+    const patientId = document.getElementById('patient-select').value;
+    if (!patientId) return;
+    const res = await fetch(`/api/reports/patient-summary/${patientId}`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    const json = await res.json();
+    if (json.success) window.open(json.data, '_blank');
+}
+
+loadPatients();
+</script>
+
+<style>
+.drop-zone {
+    border: 2px dashed #d1d5db;
+    border-radius: 12px;
+    padding: 2rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+.drop-zone.dragover {
+    border-color: #3b82f6;
+    background: #eff6ff;
+}
+.drop-zone:hover { border-color: #9ca3af; }
+.image-container { min-height: 200px; background: #111; border-radius: 8px; overflow: hidden; }
+</style>
+}

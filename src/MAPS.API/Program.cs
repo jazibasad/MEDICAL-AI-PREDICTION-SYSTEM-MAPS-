@@ -124,6 +124,17 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<MAPS.API.Services.Admin.IAdminService,
                             MAPS.API.Services.Admin.AdminService>();
 
+// ─── ONNX Image Analysis Services
+builder.Services.AddSingleton<MAPS.ML.ImageAnalysis.ImagePreprocessor>();
+builder.Services.AddSingleton<MAPS.ML.ImageAnalysis.IPneumoniaAnalyzer,
+                               MAPS.ML.ImageAnalysis.PneumoniaAnalyzer>();
+builder.Services.AddSingleton<MAPS.ML.ImageAnalysis.IBrainTumourAnalyzer,
+                               MAPS.ML.ImageAnalysis.BrainTumourAnalyzer>();
+builder.Services.AddSingleton<MAPS.ML.ImageAnalysis.ISkinCancerAnalyzer,
+                               MAPS.ML.ImageAnalysis.SkinCancerAnalyzer>();
+builder.Services.AddScoped<MAPS.API.Services.ImageAnalysis.IImageAnalysisService,
+                            MAPS.API.Services.ImageAnalysis.ImageAnalysisService>();
+
 // ─── ML.NET Prediction Services
 builder.Services.AddSingleton<MAPS.ML.Prediction.IDiabetesPredictor,
                                MAPS.ML.Prediction.DiabetesPredictor>();
