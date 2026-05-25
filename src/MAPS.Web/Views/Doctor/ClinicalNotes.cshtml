@@ -1,0 +1,295 @@
+@{
+    ViewData["Title"] = "Clinical Notes";
+    Layout = "_DoctorLayout";
+    var patientId = ViewBag.PatientId?.ToString() ?? "";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title">
+        <i class="bi bi-journal-medical text-success"></i> Clinical Notes
+    </h1>
+    <a href="/doctor/patients/@patientId" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Back to Patient
+    </a>
+</div>
+
+<div class="row g-3">
+    <!-- Note Editor -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">
+                    <i class="bi bi-pencil-square text-success me-2"></i>New Clinical Note
+                </span>
+                <div class="d-flex gap-2 align-items-center">
+                    <!-- Voice Dictation Button -->
+                    <button class="btn btn-sm btn-outline-danger" id="voice-btn"
+                            onclick="toggleRecording()">
+                        <i class="bi bi-mic-fill me-1"></i>Dictate
+                    </button>
+                    <span class="badge bg-secondary d-none" id="recording-badge">
+                        <span class="spinner-grow spinner-grow-sm me-1"></span>Recording...
+                    </span>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Voice Status -->
+                <div id="voice-status" class="alert alert-info d-none small py-2 mb-3">
+                    <i class="bi bi-mic me-2"></i>
+                    <span id="voice-status-text">Transcribing...</span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Clinical Note</label>
+                    <textarea class="form-control" id="note-text" rows="10"
+                              placeholder="Type or dictate your clinical note here...
+
+Example:
+Patient presents with persistent cough and fever for 3 days.
+Blood pressure 140/90 mmHg, temperature 38.5°C, SpO2 96%.
+Chest auscultation reveals crackles in right lower lobe.
+Starting amoxicillin 500mg TDS for 7 days.
+Follow-up chest X-ray in 48 hours.
+Referred for CBC and CRP."></textarea>
+                    <div class="form-text">
+                        <i class="bi bi-robot me-1"></i>
+                        NLP will automatically extract entities and generate a summary on save.
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-success w-100" id="save-btn"
+                            onclick="saveNote()">
+                        <i class="bi bi-check-circle me-2"></i>Save & Process Note
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="clearNote()">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NLP Results Panel -->
+    <div class="col-md-6">
+        <div class="card mb-3 d-none" id="nlp-result-card">
+            <div class="card-header fw-semibold bg-success text-white">
+                <i class="bi bi-cpu me-2"></i>NLP Analysis Result
+            </div>
+            <div class="card-body">
+                <!-- AI Summary -->
+                <div class="mb-3">
+                    <div class="small fw-semibold text-muted mb-1">AI-GENERATED SUMMARY</div>
+                    <div class="p-3 rounded" style="background:#f0fdf4;border-left:4px solid #10b981">
+                        <p class="mb-0 small" id="nlp-summary">—</p>
+                    </div>
+                </div>
+
+                <!-- Sentiment -->
+                <div class="mb-3 d-flex align-items-center gap-2">
+                    <span class="small fw-semibold text-muted">CLINICAL TREND:</span>
+                    <span class="badge" id="nlp-sentiment">—</span>
+                </div>
+
+                <!-- Extracted Entities -->
+                <div class="small fw-semibold text-muted mb-2">EXTRACTED ENTITIES</div>
+                <div id="entities-container" class="d-flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+
+        <!-- Previous Notes -->
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-clock-history me-2 text-secondary"></i>Previous Notes
+            </div>
+            <div id="notes-list" style="max-height:400px;overflow-y:auto">
+                <div class="text-center text-muted py-4 small">
+                    <div class="spinner-border spinner-border-sm"></div> Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const token     = localStorage.getItem('maps_token');
+const patientId = '@patientId';
+let   mediaRecorder, audioChunks = [], isRecording = false;
+
+// ── Save Note ─────────────────────────────────────────────────────────────────
+async function saveNote() {
+    const text = document.getElementById('note-text').value.trim();
+    if (!text) { alert('Please enter a clinical note.'); return; }
+    if (!patientId) { alert('No patient selected.'); return; }
+
+    document.getElementById('save-btn').disabled = true;
+    document.getElementById('save-btn').innerHTML =
+        '<span class="spinner-border spinner-border-sm me-2"></span>Processing NLP...';
+
+    const res  = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId, freeText: text })
+    });
+    const json = await res.json();
+
+    document.getElementById('save-btn').disabled = false;
+    document.getElementById('save-btn').innerHTML =
+        '<i class="bi bi-check-circle me-2"></i>Save & Process Note';
+
+    if (json.success) {
+        showNlpResult(json.data);
+        loadPreviousNotes();
+        document.getElementById('note-text').value = '';
+    } else {
+        alert('Failed to save note: ' + json.message);
+    }
+}
+
+function showNlpResult(data) {
+    document.getElementById('nlp-result-card').classList.remove('d-none');
+
+    // Summary
+    document.getElementById('nlp-summary').textContent = data.summary || 'No summary generated.';
+
+    // Sentiment badge
+    const sentBadge = document.getElementById('nlp-sentiment');
+    const sentColors = { Improving:'success', Stable:'secondary', Deteriorating:'danger' };
+    sentBadge.textContent  = data.sentiment;
+    sentBadge.className    = `badge bg-${sentColors[data.sentiment] || 'secondary'}`;
+
+    // Entities
+    const entColors = { Symptom:'danger', Medication:'primary', Vital:'info', Procedure:'warning' };
+    document.getElementById('entities-container').innerHTML =
+        (data.entities || []).map(e => `
+            <span class="badge rounded-pill bg-${entColors[e.entityType] || 'secondary'}"
+                  title="${e.entityType}: ${(e.confidence*100).toFixed(0)}% confidence">
+                ${e.value}
+            </span>`).join('');
+}
+
+// ── Voice Dictation ───────────────────────────────────────────────────────────
+async function toggleRecording() {
+    if (!isRecording) {
+        await startRecording();
+    } else {
+        await stopRecording();
+    }
+}
+
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        audioChunks   = [];
+
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop          = async () => await sendAudioToWhisper();
+        mediaRecorder.start();
+
+        isRecording = true;
+        document.getElementById('voice-btn').innerHTML =
+            '<i class="bi bi-stop-fill me-1"></i>Stop';
+        document.getElementById('voice-btn').classList.replace('btn-outline-danger','btn-danger');
+        document.getElementById('recording-badge').classList.remove('d-none');
+    } catch(e) {
+        alert('Microphone access denied. Please allow microphone permissions.');
+    }
+}
+
+async function stopRecording() {
+    if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+        isRecording = false;
+
+        document.getElementById('voice-btn').innerHTML =
+            '<i class="bi bi-mic-fill me-1"></i>Dictate';
+        document.getElementById('voice-btn').classList.replace('btn-danger','btn-outline-danger');
+        document.getElementById('recording-badge').classList.add('d-none');
+
+        document.getElementById('voice-status').classList.remove('d-none');
+        document.getElementById('voice-status-text').textContent = 'Transcribing your note...';
+    }
+}
+
+async function sendAudioToWhisper() {
+    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+    const form = new FormData();
+    form.append('audio', blob, 'dictation.webm');
+
+    try {
+        const res  = await fetch('/api/voice/transcribe', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + token },
+            body: form
+        });
+        const json = await res.json();
+
+        document.getElementById('voice-status').classList.add('d-none');
+
+        if (json.success) {
+            const current = document.getElementById('note-text').value;
+            const separator = current.length > 0 ? '\n' : '';
+            document.getElementById('note-text').value = current + separator + json.data.text;
+
+            if (json.data.corrected) {
+                showToast('Medical term correction applied to transcription.', 'info');
+            }
+        } else {
+            alert('Transcription failed: ' + json.message);
+        }
+    } catch(e) {
+        document.getElementById('voice-status').classList.add('d-none');
+        alert('Transcription error: ' + e.message);
+    }
+}
+
+// ── Load Previous Notes ───────────────────────────────────────────────────────
+async function loadPreviousNotes() {
+    if (!patientId) return;
+    const res  = await fetch(`/api/notes/patient/${patientId}`, {
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    const json = await res.json();
+
+    document.getElementById('notes-list').innerHTML =
+        json.data.length === 0
+        ? '<div class="text-center text-muted py-4 small">No previous notes</div>'
+        : json.data.map(n => `
+            <div class="border-bottom p-3">
+                <div class="d-flex justify-content-between mb-1">
+                    <small class="fw-semibold text-muted">
+                        <i class="bi bi-calendar2 me-1"></i>
+                        ${new Date(n.createdAt).toLocaleString()}
+                    </small>
+                    <small class="badge bg-secondary">${n.entities?.length || 0} entities</small>
+                </div>
+                <p class="small text-muted mb-1 fst-italic">${n.summary || '—'}</p>
+                <div class="d-flex flex-wrap gap-1">
+                    ${(n.entities || []).slice(0,4).map(e =>
+                        `<span class="badge rounded-pill bg-light text-dark border">${e.value}</span>`
+                    ).join('')}
+                </div>
+            </div>`).join('');
+}
+
+function clearNote() {
+    document.getElementById('note-text').value = '';
+    document.getElementById('nlp-result-card').classList.add('d-none');
+}
+
+function showToast(msg, type) {
+    // Simple inline notification
+    const div = document.createElement('div');
+    div.className = `alert alert-${type} position-fixed bottom-0 end-0 m-3 small`;
+    div.style.zIndex = 9999;
+    div.textContent = msg;
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 3000);
+}
+
+loadPreviousNotes();
+</script>
+}

@@ -124,6 +124,18 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<MAPS.API.Services.Admin.IAdminService,
                             MAPS.API.Services.Admin.AdminService>();
 
+// ─── Risk, NLP & Voice Services
+builder.Services.AddSingleton<MAPS.ML.Risk.IRiskScoringModel,
+                               MAPS.ML.Risk.RiskScoringModel>();
+builder.Services.AddSingleton<MAPS.ML.NLP.IClinicalNlpPipeline,
+                               MAPS.ML.NLP.ClinicalNlpPipeline>();
+builder.Services.AddScoped<MAPS.API.Services.Risk.IRiskAssessmentService,
+                            MAPS.API.Services.Risk.RiskAssessmentService>();
+builder.Services.AddScoped<MAPS.API.Services.NLP.INlpService,
+                            MAPS.API.Services.NLP.NlpService>();
+builder.Services.AddSingleton<MAPS.API.Services.Voice.IWhisperTranscriptionService,
+                               MAPS.API.Services.Voice.WhisperTranscriptionService>();
+
 // ─── ONNX Image Analysis Services
 builder.Services.AddSingleton<MAPS.ML.ImageAnalysis.ImagePreprocessor>();
 builder.Services.AddSingleton<MAPS.ML.ImageAnalysis.IPneumoniaAnalyzer,
@@ -212,6 +224,10 @@ app.UseMiddleware<AuditLoggingMiddleware>();
 app.MapControllers();
 app.MapHealthChecks("/api/health");
 app.MapHub<MAPS.API.Hubs.ChatHub>("/api/chat");
+
+// ─── Register Hangfire recurring jobs
+MAPS.API.BackgroundJobs.RiskRecalculationJob.RegisterRecurringJob();
+MAPS.API.BackgroundJobs.ModelRetrainingJob.RegisterRecurringJob();
 
 app.Run();
 
