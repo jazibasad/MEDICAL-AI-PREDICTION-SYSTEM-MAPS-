@@ -1,0 +1,525 @@
+@{
+    ViewData["Title"] = "AI Clinical Assistant";
+    Layout = "_DoctorLayout";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="page-title">
+        <i class="bi bi-robot text-primary"></i> AI Clinical Assistant
+        <span class="badge bg-primary ms-2 fs-6">Doctor Only</span>
+    </h1>
+    <div class="alert alert-warning py-1 px-3 mb-0 small">
+        <i class="bi bi-shield-check me-1"></i>
+        All responses are AI-generated — validate with clinical judgment.
+    </div>
+</div>
+
+<div class="row g-3" style="height:calc(100vh - 160px)">
+
+    <!-- Left: Session & Context Panel -->
+    <div class="col-md-3 d-flex flex-column gap-3">
+
+        <!-- Patient Context -->
+        <div class="card">
+            <div class="card-header fw-semibold small">
+                <i class="bi bi-person-badge me-2 text-success"></i>Patient Context (RAG)
+            </div>
+            <div class="card-body p-2">
+                <select class="form-select form-select-sm" id="patient-context"
+                        onchange="updatePatientContext()">
+                    <option value="">General query (no patient)</option>
+                </select>
+                <div id="context-info" class="mt-2 small text-muted d-none">
+                    <div class="d-flex align-items-center gap-1">
+                        <div class="spinner-grow spinner-grow-sm text-success" style="width:.5rem;height:.5rem"></div>
+                        RAG context active
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Session List -->
+        <div class="card flex-grow-1">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold small">
+                    <i class="bi bi-chat-dots me-1"></i>Sessions
+                </span>
+                <button class="btn btn-sm btn-primary py-0 px-2" onclick="startNewSession()">
+                    + New
+                </button>
+            </div>
+            <div class="list-group list-group-flush overflow-auto" id="sessions-list"
+                 style="max-height:300px">
+                <div class="list-group-item text-muted text-center small py-3">
+                    <div class="spinner-border spinner-border-sm"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Literature Search -->
+        <div class="card">
+            <div class="card-header fw-semibold small">
+                <i class="bi bi-journal-medical me-2 text-info"></i>Literature Search
+            </div>
+            <div class="card-body p-2">
+                <div class="input-group input-group-sm">
+                    <input type="text" class="form-control" id="lit-query"
+                           placeholder="Search guidelines..."
+                           onkeydown="if(event.key==='Enter') searchLiterature()">
+                    <button class="btn btn-info text-white" onclick="searchLiterature()">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+                <div id="lit-results" class="mt-2 overflow-auto" style="max-height:200px"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Chat Window -->
+    <div class="col-md-9 d-flex flex-column">
+        <div class="card flex-grow-1 d-flex flex-column">
+
+            <!-- Chat Header -->
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="fw-semibold" id="session-title">No session active</span>
+                    <span class="badge bg-secondary ms-2 small" id="context-badge">General</span>
+                </div>
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="badge" id="rag-confidence-badge" style="display:none">
+                        Context: —
+                    </span>
+                </div>
+            </div>
+
+            <!-- Messages Area -->
+            <div class="flex-grow-1 overflow-auto p-3" id="messages-area"
+                 style="background:#f8fafc;min-height:0">
+                <div class="text-center py-5" id="empty-state">
+                    <i class="bi bi-robot fs-1 d-block mb-3 text-muted opacity-25"></i>
+                    <p class="text-muted">Start a new session to begin querying the AI assistant.</p>
+                    <button class="btn btn-primary" onclick="startNewSession()">
+                        <i class="bi bi-plus-circle me-2"></i>New Session
+                    </button>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="card-footer p-2" id="input-area" style="display:none">
+
+                <!-- Modality Tabs -->
+                <div class="d-flex gap-1 mb-2">
+                    <button class="btn btn-sm btn-primary modality-btn active"
+                            data-modality="1" onclick="setModality(1, this)">
+                        <i class="bi bi-chat-text me-1"></i>Text
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary modality-btn"
+                            data-modality="2" onclick="setModality(2, this)">
+                        <i class="bi bi-image me-1"></i>Image
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary modality-btn"
+                            data-modality="3" onclick="setModality(3, this)">
+                        <i class="bi bi-mic me-1"></i>Voice
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary modality-btn"
+                            data-modality="4" onclick="setModality(4, this)">
+                        <i class="bi bi-file-earmark me-1"></i>Document
+                    </button>
+                </div>
+
+                <!-- Text Input -->
+                <div id="text-input-panel" class="d-flex gap-2">
+                    <textarea class="form-control form-control-sm" id="text-input" rows="2"
+                              placeholder="Ask about diagnoses, medications, clinical guidelines, patient history..."
+                              onkeydown="handleKeyDown(event)"></textarea>
+                    <button class="btn btn-primary" id="send-btn" onclick="sendQuery()">
+                        <i class="bi bi-send-fill"></i>
+                    </button>
+                </div>
+
+                <!-- Image Input -->
+                <div id="image-input-panel" class="d-none">
+                    <div class="d-flex gap-2 align-items-center">
+                        <label class="btn btn-outline-secondary btn-sm mb-0">
+                            <i class="bi bi-upload me-1"></i>Upload Image
+                            <input type="file" class="d-none" id="img-file"
+                                   accept=".jpg,.jpeg,.png"
+                                   onchange="handleFileUpload(this, 'image')">
+                        </label>
+                        <span id="img-status" class="small text-muted">No file selected</span>
+                        <button class="btn btn-primary btn-sm ms-auto" onclick="sendQuery()">
+                            <i class="bi bi-send me-1"></i>Analyse
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Voice Input -->
+                <div id="voice-input-panel" class="d-none">
+                    <div class="d-flex gap-2 align-items-center">
+                        <button class="btn btn-danger btn-sm" id="voice-record-btn"
+                                onclick="toggleVoice()">
+                            <i class="bi bi-mic-fill me-1"></i>Start Recording
+                        </button>
+                        <span id="voice-status" class="small text-muted">
+                            Click to record your clinical query
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Document Input -->
+                <div id="doc-input-panel" class="d-none">
+                    <div class="d-flex gap-2 align-items-center">
+                        <label class="btn btn-outline-secondary btn-sm mb-0">
+                            <i class="bi bi-file-earmark-arrow-up me-1"></i>Upload Document
+                            <input type="file" class="d-none" id="doc-file"
+                                   accept=".pdf,.docx,.txt"
+                                   onchange="handleFileUpload(this, 'document')">
+                        </label>
+                        <span id="doc-status" class="small text-muted">No file selected</span>
+                        <button class="btn btn-primary btn-sm ms-auto" onclick="sendQuery()">
+                            <i class="bi bi-send me-1"></i>Analyse
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+const token = localStorage.getItem('maps_token');
+let currentSessionId  = null;
+let currentModality   = 1;
+let uploadedImageKey  = null;
+let uploadedAudioKey  = null;
+let uploadedDocKey    = null;
+let mediaRecorder, audioChunks = [], isRecording = false;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+    await loadPatients();
+    await loadSessions();
+}
+
+async function loadPatients() {
+    const res  = await fetch('/api/patients/queue', { headers: { Authorization: 'Bearer ' + token } });
+    const json = await res.json();
+    const sel  = document.getElementById('patient-context');
+    (json.data || []).forEach(p => {
+        const o = document.createElement('option');
+        o.value = p.patientId;
+        o.textContent = `${p.fullName} (Risk: ${p.riskScore?.toFixed(0)})`;
+        sel.appendChild(o);
+    });
+}
+
+async function loadSessions() {
+    const res  = await fetch('/api/chatbot/sessions', { headers: { Authorization: 'Bearer ' + token } });
+    const json = await res.json();
+    const list = document.getElementById('sessions-list');
+
+    list.innerHTML = (json.data || []).length === 0
+        ? '<div class="list-group-item text-muted text-center small py-2">No sessions yet</div>'
+        : (json.data || []).map(s => `
+            <div class="list-group-item list-group-item-action small py-2 ${s.sessionId === currentSessionId ? 'active' : ''}"
+                 onclick="loadSession('${s.sessionId}')">
+                <div class="fw-semibold">${new Date(s.startedAt).toLocaleDateString()}</div>
+                <div class="text-muted">${s.contextSummary}</div>
+            </div>`).join('');
+}
+
+// ── Session Management ────────────────────────────────────────────────────────
+async function startNewSession() {
+    const patientId = document.getElementById('patient-context').value || null;
+    const res  = await fetch('/api/chatbot/session', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientContextId: patientId })
+    });
+    const json = await res.json();
+    if (json.success) {
+        currentSessionId = json.data.sessionId;
+        document.getElementById('messages-area').innerHTML = '';
+        document.getElementById('empty-state')?.remove();
+        document.getElementById('input-area').style.display = '';
+        document.getElementById('session-title').textContent =
+            `Session — ${new Date().toLocaleTimeString()}`;
+
+        const badge = document.getElementById('context-badge');
+        badge.textContent = patientId ? 'Patient RAG Active' : 'General';
+        badge.className   = patientId ? 'badge bg-success ms-2 small' : 'badge bg-secondary ms-2 small';
+
+        if (patientId) document.getElementById('context-info').classList.remove('d-none');
+
+        await loadSessions();
+    }
+}
+
+async function loadSession(sessionId) {
+    currentSessionId = sessionId;
+    const res  = await fetch(`/api/chatbot/history/${sessionId}`, {
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    const json = await res.json();
+    if (!json.success) return;
+
+    document.getElementById('messages-area').innerHTML = '';
+    document.getElementById('empty-state')?.remove();
+    document.getElementById('input-area').style.display = '';
+
+    json.data.messages.forEach(m => appendMessage(
+        m.role === 'user' ? 'user' : 'assistant',
+        m.content, m.modality));
+
+    await loadSessions();
+}
+
+function updatePatientContext() {
+    const patientId = document.getElementById('patient-context').value;
+    document.getElementById('context-info').classList.toggle('d-none', !patientId);
+}
+
+// ── Modality ──────────────────────────────────────────────────────────────────
+function setModality(m, btn) {
+    currentModality = m;
+    document.querySelectorAll('.modality-btn').forEach(b => {
+        b.className = b === btn
+            ? 'btn btn-sm btn-primary modality-btn active'
+            : 'btn btn-sm btn-outline-secondary modality-btn';
+    });
+    ['text','image','voice','doc'].forEach((id, idx) => {
+        const panel = document.getElementById(`${id}-input-panel`);
+        if (panel) panel.classList.toggle('d-none', idx + 1 !== m);
+    });
+}
+
+// ── Send Query ────────────────────────────────────────────────────────────────
+async function sendQuery() {
+    if (!currentSessionId) { alert('Please start a session first.'); return; }
+
+    const body = {
+        sessionId:         currentSessionId,
+        patientContextId:  document.getElementById('patient-context').value || null,
+        modality:          currentModality,
+        textQuery:         currentModality === 1
+            ? document.getElementById('text-input').value : null,
+        imageKey:          uploadedImageKey,
+        audioKey:          uploadedAudioKey,
+        documentKey:       uploadedDocKey
+    };
+
+    if (currentModality === 1 && !body.textQuery?.trim()) {
+        alert('Please enter a query.'); return;
+    }
+
+    // Show user message
+    appendMessage('user', body.textQuery || `[${['','Text','Image','Voice','Document'][currentModality]} input]`, currentModality);
+    if (currentModality === 1)
+        document.getElementById('text-input').value = '';
+
+    // Show typing indicator
+    const typingId = 'typing-' + Date.now();
+    appendTyping(typingId);
+    document.getElementById('send-btn')?.setAttribute('disabled','true');
+
+    const res  = await fetch('/api/chatbot/query', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const json = await res.json();
+
+    removeTyping(typingId);
+    document.getElementById('send-btn')?.removeAttribute('disabled');
+
+    if (json.success) {
+        appendMessage('assistant', json.data.responseText, 1);
+        updateConfidenceBadge(json.data.contextConfidence);
+        uploadedImageKey = uploadedAudioKey = uploadedDocKey = null;
+    } else {
+        appendMessage('error', 'Query failed: ' + json.message, 1);
+    }
+}
+
+function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
+}
+
+// ── Append Messages ───────────────────────────────────────────────────────────
+const modalityIcons = ['','💬','🖼️','🎙️','📄'];
+
+function appendMessage(role, content, modality) {
+    const area = document.getElementById('messages-area');
+    const div  = document.createElement('div');
+    div.className = `message-row mb-3 ${role === 'user' ? 'text-end' : ''}`;
+
+    const html = typeof marked !== 'undefined'
+        ? marked.parse(content)
+        : content.replace(/\n/g,'<br>');
+
+    div.innerHTML = role === 'user'
+        ? `<div class="d-inline-block text-start bubble-user p-3 rounded-3 shadow-sm">
+               <div class="small text-white-50 mb-1">${modalityIcons[modality] || '💬'} You</div>
+               <div class="text-white">${html}</div>
+           </div>`
+        : `<div class="d-inline-block text-start bubble-ai p-3 rounded-3 shadow-sm mw-100">
+               <div class="small text-muted mb-1">🤖 MAPS AI Assistant</div>
+               <div class="ai-content">${html}</div>
+           </div>`;
+
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+}
+
+function appendTyping(id) {
+    const area = document.getElementById('messages-area');
+    const div  = document.createElement('div');
+    div.id     = id;
+    div.className = 'message-row mb-2';
+    div.innerHTML = `<div class="bubble-ai d-inline-block p-3 rounded-3 shadow-sm">
+        <div class="small text-muted mb-1">🤖 MAPS AI Assistant</div>
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+    </div>`;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+}
+
+function removeTyping(id) {
+    document.getElementById(id)?.remove();
+}
+
+function updateConfidenceBadge(confidence) {
+    const badge = document.getElementById('rag-confidence-badge');
+    badge.style.display = '';
+    const pct   = (confidence * 100).toFixed(0);
+    badge.textContent = `Context: ${pct}%`;
+    badge.className   = 'badge ' + (confidence >= 0.7 ? 'bg-success' :
+                                     confidence >= 0.4 ? 'bg-warning' : 'bg-danger');
+}
+
+// ── File Upload ───────────────────────────────────────────────────────────────
+async function handleFileUpload(input, type) {
+    if (!input.files[0]) return;
+    const file = input.files[0];
+    const form = new FormData();
+    form.append('file', file);
+
+    const statusEl = document.getElementById(type === 'image' ? 'img-status' : 'doc-status');
+    statusEl.textContent = 'Uploading...';
+
+    const res  = await fetch('/api/chat/upload', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: form
+    });
+    const json = await res.json();
+
+    if (json.success) {
+        if (type === 'image')    uploadedImageKey = json.data.objectKey;
+        else if (type === 'document') uploadedDocKey  = json.data.objectKey;
+        statusEl.textContent = `✅ ${file.name} ready`;
+    } else {
+        statusEl.textContent = '❌ Upload failed';
+    }
+}
+
+// ── Voice Recording ───────────────────────────────────────────────────────────
+async function toggleVoice() {
+    if (!isRecording) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        audioChunks   = [];
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = async () => {
+            const blob  = new Blob(audioChunks, { type: 'audio/webm' });
+            const form  = new FormData();
+            form.append('file', blob, 'query.webm');
+            document.getElementById('voice-status').textContent = 'Uploading audio...';
+            const res   = await fetch('/api/chat/upload', {
+                method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: form
+            });
+            const json  = await res.json();
+            if (json.success) {
+                uploadedAudioKey = json.data.objectKey;
+                document.getElementById('voice-status').textContent = '✅ Audio ready — click Analyse';
+                await sendQuery();
+            }
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        document.getElementById('voice-record-btn').innerHTML = '<i class="bi bi-stop-fill me-1"></i>Stop';
+        document.getElementById('voice-record-btn').classList.replace('btn-danger','btn-dark');
+        document.getElementById('voice-status').textContent = '🔴 Recording...';
+    } else {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+        isRecording = false;
+        document.getElementById('voice-record-btn').innerHTML = '<i class="bi bi-mic-fill me-1"></i>Start Recording';
+        document.getElementById('voice-record-btn').classList.replace('btn-dark','btn-danger');
+    }
+}
+
+// ── Literature Search ─────────────────────────────────────────────────────────
+async function searchLiterature() {
+    const query = document.getElementById('lit-query').value.trim();
+    if (!query) return;
+
+    document.getElementById('lit-results').innerHTML =
+        '<div class="small text-muted text-center py-2"><div class="spinner-border spinner-border-sm"></div></div>';
+
+    const res  = await fetch('/api/literature/search', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, topK: 3 })
+    });
+    const json = await res.json();
+
+    document.getElementById('lit-results').innerHTML =
+        (json.data || []).map(r => `
+            <div class="border-bottom py-2">
+                <div class="small fw-semibold">${r.title}</div>
+                <div class="small text-muted">${r.passage.substring(0,120)}...</div>
+                <div class="small text-info">${r.source}</div>
+                <button class="btn btn-link btn-sm p-0 small"
+                        onclick="insertLiterature(\`${r.passage.replace(/`/g,"'")}\`)">
+                    Insert into chat →
+                </button>
+            </div>`).join('');
+}
+
+function insertLiterature(text) {
+    document.getElementById('text-input').value =
+        'Based on the following guideline: ' + text.substring(0, 300) + '...\n\nQuery: ';
+    setModality(1, document.querySelector('.modality-btn'));
+    document.getElementById('text-input').focus();
+}
+
+init();
+</script>
+
+<style>
+.bubble-user {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    max-width: 75%;
+}
+.bubble-ai {
+    background: white;
+    border: 1px solid #e5e7eb;
+    max-width: 85%;
+}
+.ai-content h1, .ai-content h2, .ai-content h3 { font-size: 1rem; font-weight: 600; margin-top: .75rem; }
+.ai-content ul, .ai-content ol { padding-left: 1.25rem; }
+.ai-content p:last-child { margin-bottom: 0; }
+.ai-content code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px; font-size: 0.85em; }
+.ai-content strong { color: #1e3a5f; }
+
+.typing-dots { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
+.typing-dots span {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #9ca3af; animation: typing 1.2s infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: .2s; }
+.typing-dots span:nth-child(3) { animation-delay: .4s; }
+@keyframes typing { 0%,60%,100% { opacity:.3; transform:scale(.8); } 30% { opacity:1; transform:scale(1); } }
+</style>
+}

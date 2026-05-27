@@ -124,6 +124,16 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<MAPS.API.Services.Admin.IAdminService,
                             MAPS.API.Services.Admin.AdminService>();
 
+// ─── Chatbot & Literature Services
+builder.Services.AddScoped<MAPS.API.Services.Chatbot.IRagContextBuilder,
+                            MAPS.API.Services.Chatbot.RagContextBuilder>();
+builder.Services.AddSingleton<MAPS.API.Services.Chatbot.ISafetyGuardModule,
+                               MAPS.API.Services.Chatbot.SafetyGuardModule>();
+builder.Services.AddScoped<MAPS.API.Services.Chatbot.IChatbotOrchestrator,
+                            MAPS.API.Services.Chatbot.ChatbotOrchestrator>();
+builder.Services.AddScoped<MAPS.API.Services.Literature.ILiteratureSearchService,
+                            MAPS.API.Services.Literature.LiteratureSearchService>();
+
 // ─── Risk, NLP & Voice Services
 builder.Services.AddSingleton<MAPS.ML.Risk.IRiskScoringModel,
                                MAPS.ML.Risk.RiskScoringModel>();
