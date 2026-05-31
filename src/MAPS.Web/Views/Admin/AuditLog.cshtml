@@ -1,0 +1,146 @@
+@{
+    ViewData["Title"] = "Audit Log";
+    Layout = "_AdminLayout";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title">
+        <i class="bi bi-journal-text text-warning"></i> Audit Trail
+    </h1>
+    <div class="d-flex gap-2">
+        <select class="form-select form-select-sm" id="action-filter"
+                style="width:180px" onchange="loadAudit()">
+            <option value="">All Actions</option>
+            <option value="LOGIN">Login Events</option>
+            <option value="PREDICTION">Predictions</option>
+            <option value="USER_">User Management</option>
+            <option value="PATIENT_">Patient Events</option>
+            <option value="PRESCRIPTION">Prescriptions</option>
+            <option value="IMAGE_">Image Analysis</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadAudit()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+        </button>
+        <button class="btn btn-sm btn-outline-danger" onclick="exportAudit()">
+            <i class="bi bi-download me-1"></i>Export CSV
+        </button>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card bg-white shadow-sm border-start border-dark border-4">
+            <div class="stat-value" id="stat-total-actions">—</div>
+            <div class="stat-label">Total Actions</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-white shadow-sm border-start border-primary border-4">
+            <div class="stat-value text-primary" id="stat-unique-users">—</div>
+            <div class="stat-label">Unique Users</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-white shadow-sm border-start border-danger border-4">
+            <div class="stat-value text-danger" id="stat-failed-logins">—</div>
+            <div class="stat-label">Failed Logins</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-white shadow-sm border-start border-warning border-4">
+            <div class="stat-value text-warning" id="stat-admin-actions">—</div>
+            <div class="stat-label">Admin Actions</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between">
+        <span class="fw-semibold">
+            <i class="bi bi-shield-lock me-2 text-warning"></i>Append-Only Audit Events
+        </span>
+        <span class="badge bg-warning text-dark">Tamper-Proof</span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover table-sm mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th><th>Timestamp</th><th>User</th>
+                    <th>Action</th><th>Entity</th><th>IP Address</th>
+                </tr>
+            </thead>
+            <tbody id="audit-tbody">
+                <tr><td colspan="6" class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm text-warning"></div>
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer text-muted small">
+        <i class="bi bi-info-circle me-1"></i>
+        Audit records are append-only — cannot be modified or deleted, even by administrators.
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const token = localStorage.getItem('maps_token');
+const actionColors = {
+    'LOGIN_SUCCESS':'success','LOGIN_FAILED':'danger','LOGOUT':'secondary',
+    'USER_APPROVED':'success','USER_DEACTIVATED':'warning','USER_DELETED':'danger',
+    'PATIENT_ASSIGNED':'primary','PATIENT_TRANSFERRED':'info',
+    'PREDICTION_CREATED':'primary','IMAGE_ANALYSED':'info',
+    'PRESCRIPTION_CREATED':'success','CLINICAL_NOTE_CREATED':'secondary',
+};
+
+async function loadAudit() {
+    const filter = document.getElementById('action-filter').value;
+    const res  = await fetch('/api/analytics/audit?limit=100', {
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    const json = await res.json();
+    const d    = json.data;
+
+    document.getElementById('stat-total-actions').textContent = d.totalActions.toLocaleString();
+    document.getElementById('stat-unique-users').textContent  = d.uniqueUsers;
+    document.getElementById('stat-failed-logins').textContent = d.failedLogins;
+    document.getElementById('stat-admin-actions').textContent = d.adminActions;
+
+    let events = d.recentEvents;
+    if (filter) events = events.filter(e => e.action.includes(filter));
+
+    document.getElementById('audit-tbody').innerHTML =
+        events.length === 0
+        ? '<tr><td colspan="6" class="text-center text-muted py-4">No events found</td></tr>'
+        : events.map(e => `
+            <tr>
+                <td class="text-muted small font-monospace">${e.logId}</td>
+                <td class="small">
+                    <div>${new Date(e.timestamp).toLocaleDateString()}</div>
+                    <div class="text-muted">${new Date(e.timestamp).toLocaleTimeString()}</div>
+                </td>
+                <td class="small">${e.userEmail}</td>
+                <td><span class="badge bg-${actionColors[e.action]||'secondary'} small">${e.action}</span></td>
+                <td class="small text-muted">${e.entityType}</td>
+                <td class="small font-monospace text-muted">${e.ipAddress||'—'}</td>
+            </tr>`).join('');
+}
+
+function exportAudit() {
+    const rows = [['ID','Timestamp','User','Action','Entity','IP']];
+    document.querySelectorAll('#audit-tbody tr').forEach(tr => {
+        const cells = [...tr.querySelectorAll('td')].map(td => td.textContent.trim().replace(/\n\s+/g,' '));
+        if (cells.length === 6) rows.push(cells);
+    });
+    const csv  = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const link = document.createElement('a');
+    link.href  = URL.createObjectURL(blob);
+    link.download = `maps_audit_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+}
+
+loadAudit();
+setInterval(loadAudit, 60000);
+</script>
+}

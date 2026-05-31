@@ -124,6 +124,11 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<MAPS.API.Services.Admin.IAdminService,
                             MAPS.API.Services.Admin.AdminService>();
 
+// ─── Analytics Service
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<MAPS.API.Services.Analytics.IAnalyticsService,
+                            MAPS.API.Services.Analytics.AnalyticsService>();
+
 // ─── Chatbot & Literature Services
 builder.Services.AddScoped<MAPS.API.Services.Chatbot.IRagContextBuilder,
                             MAPS.API.Services.Chatbot.RagContextBuilder>();
@@ -230,6 +235,7 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<AuditLoggingMiddleware>();
+app.UseMiddleware<MAPS.API.Middleware.RateLimitingMiddleware>();
 
 app.MapControllers();
 app.MapHealthChecks("/api/health");

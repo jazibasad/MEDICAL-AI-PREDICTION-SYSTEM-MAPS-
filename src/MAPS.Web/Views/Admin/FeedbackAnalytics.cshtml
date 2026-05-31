@@ -1,0 +1,122 @@
+@{
+    ViewData["Title"] = "Feedback Analytics";
+    Layout = "_AdminLayout";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title">
+        <i class="bi bi-star-fill text-warning"></i> Feedback Analytics
+    </h1>
+    <button class="btn btn-sm btn-outline-secondary" onclick="loadFeedback()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+    </button>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card bg-white shadow-sm border-start border-warning border-4">
+            <div class="stat-value text-warning" id="avg-rating">—</div>
+            <div class="stat-label">Average Rating / 5</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-white shadow-sm border-start border-success border-4">
+            <div class="stat-value text-success" id="positive-count">—</div>
+            <div class="stat-label">Positive</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-white shadow-sm border-start border-secondary border-4">
+            <div class="stat-value text-secondary" id="neutral-count">—</div>
+            <div class="stat-label">Neutral</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-white shadow-sm border-start border-danger border-4">
+            <div class="stat-value text-danger" id="negative-count">—</div>
+            <div class="stat-label">Negative</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-bar-chart me-2 text-warning"></i>Rating by Doctor
+            </div>
+            <div class="card-body">
+                <canvas id="doctorRatingChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-graph-up me-2 text-success"></i>Feedback Volume — Last 7 Days
+            </div>
+            <div class="card-body">
+                <canvas id="feedbackTrendChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const token = localStorage.getItem('maps_token');
+let ratingChart, trendChart;
+
+async function loadFeedback() {
+    const res  = await fetch('/api/analytics/feedback', {
+        headers: { Authorization: 'Bearer ' + token }
+    });
+    const json = await res.json();
+    const d    = json.data;
+
+    document.getElementById('avg-rating').textContent    = (d.averageRating||0).toFixed(1) + ' ⭐';
+    document.getElementById('positive-count').textContent= d.positiveCount;
+    document.getElementById('neutral-count').textContent = d.neutralCount;
+    document.getElementById('negative-count').textContent= d.negativeCount;
+
+    // Doctor rating chart
+    if (ratingChart) ratingChart.destroy();
+    ratingChart = new Chart(document.getElementById('doctorRatingChart'), {
+        type: 'bar',
+        data: {
+            labels: Object.keys(d.ratingByDoctor || {}),
+            datasets: [{
+                label: 'Avg Rating',
+                data: Object.values(d.ratingByDoctor || {}),
+                backgroundColor: '#f59e0b'
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: { y: { min: 0, max: 5 } },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    // Trend chart
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(document.getElementById('feedbackTrendChart'), {
+        type: 'line',
+        data: {
+            labels: Object.keys(d.sentimentTrend || {}),
+            datasets: [{
+                label: 'Feedback',
+                data: Object.values(d.sentimentTrend || {}),
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16,185,129,0.1)',
+                tension: 0.4, fill: true
+            }]
+        },
+        options: { responsive: true }
+    });
+}
+
+loadFeedback();
+</script>
+}
